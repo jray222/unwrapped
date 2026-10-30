@@ -7,7 +7,7 @@ from apps.families.models import AuditLog
 @pytest.fixture
 def entry(family, admin_user):
     return AuditLog.objects.create(
-        family=family, actor=admin_user, action=AuditLog.Action.CLAIM, target_type="item", target_id=1
+        family=family, actor=admin_user, action=AuditLog.Action.INVITE, target_type="invite", target_id=1
     )
 
 
@@ -31,7 +31,7 @@ def test_audit_log_queryset_cannot_update_or_delete(entry):
         AuditLog.objects.update(action="login")
     with pytest.raises(TypeError):
         AuditLog.objects.all().delete()
-    assert AuditLog.objects.get().action == AuditLog.Action.CLAIM
+    assert AuditLog.objects.get().action == AuditLog.Action.INVITE
 
 
 def test_audit_log_metadata_rejects_tokens(family):
@@ -42,5 +42,5 @@ def test_audit_log_metadata_rejects_tokens(family):
 
 def test_audit_log_covers_required_actions():
     assert {c.value for c in AuditLog.Action} == {
-        "claim", "release", "assign", "invite", "link_issue", "link_revoke", "role_change", "login",
+        "claim", "release", "assign", "pledge", "invite", "link_issue", "link_revoke", "role_change", "login",
     }
