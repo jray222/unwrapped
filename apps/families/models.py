@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 from .validators import MaxLifetime, validate_http_url, validate_no_tokens, validate_token_hash
@@ -33,8 +34,10 @@ class TenantModel(models.Model):
     """Base for every tenant table: family_id NOT NULL (indexed by the FK).
 
     `family_scoped` names FKs whose target must belong to the same family. Django
-    has no composite FKs, so this is checked in save() and clean(); bulk_create()
-    and queryset.update() bypass it, and RLS is the backstop for those.
+    has no composite FKs, so this is checked in save() and clean() for a friendly
+    error. The database enforces the same rule with composite (id, family_id)
+    foreign keys added in migration 0002, so bulk_create() and queryset.update()
+    cannot bypass it.
     """
 
     family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name="+")
@@ -46,7 +49,8 @@ class TenantModel(models.Model):
 
     def validate_invariants(self):
         for name in self.family_scoped:
-            if getattr(self, name).family_id != self.family_id:
+            related = getattr(self, name)
+            if related is not None and related.family_id != self.family_id:
                 raise ValidationError(f"{name} belongs to a different family.", code="cross_family")
 
     def clean(self):
@@ -86,6 +90,10 @@ class Person(TenantModel, Timestamped):
             models.UniqueConstraint(
                 fields=["family", "user"], condition=models.Q(user__isnull=False), name="uniq_person_family_user"
             ),
+            models.UniqueConstraint(fields=["id", "family"], name="uniq_person_id_family"),
+            models.UniqueConstraint(
+                "family", Lower("email"), condition=~models.Q(email=""), name="uniq_person_family_lower_email"
+            ),
             models.CheckConstraint(condition=~models.Q(first_name=""), name="person_first_name_not_empty"),
         ]
 
@@ -100,6 +108,9 @@ class WishList(TenantModel, Timestamped):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
     managed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     title = models.CharField(max_length=200)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["id", "family"], name="uniq_wishlist_id_family")]
 
 
 class Item(TenantModel, Timestamped):
@@ -119,6 +130,7 @@ class Item(TenantModel, Timestamped):
 
     class Meta:
         constraints = [
+            models.UniqueConstraint(fields=["id", "family"], name="uniq_item_id_family"),
             models.CheckConstraint(condition=models.Q(quantity__gte=1), name="item_quantity_positive"),
             models.CheckConstraint(
                 condition=models.Q(price__isnull=True) | models.Q(price__gte=0), name="item_price_non_negative"
@@ -207,6 +219,7 @@ class Assignment(TenantModel, Timestamped):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["item", "assignee"], name="uniq_assignment_item_assignee"),
+            models.UniqueConstraint(fields=["id", "item", "assignee"], name="uniq_assignment_id_item_assignee"),
             models.CheckConstraint(
                 condition=models.Q(status__in=["assigned", "bought", "couldnt_get"]), name="assignment_status_valid"
             ),
@@ -251,6 +264,11 @@ class GuestLink(TokenModel):
     person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="+")
     lists = models.ManyToManyField(WishList, through="GuestLinkList", related_name="+")
 
+    class Meta(TokenModel.Meta):
+        constraints = TokenModel.Meta.constraints + [
+            models.UniqueConstraint(fields=["id", "family"], name="uniq_guestlink_id_family"),
+        ]
+
 
 class GuestLinkList(TenantModel):
     """Explicit through table so the guest's scope rows carry family_id too."""
@@ -279,11 +297,15 @@ def default_invite_expiry():
 
 
 class Invite(TokenModel):
+    family_scoped = ("person",)
+
     expires_at = models.DateTimeField(default=default_invite_expiry, validators=[MaxLifetime(INVITE_MAX_DAYS)])
     email = models.EmailField()
     role = models.CharField(max_length=20, choices=Membership.Role, default=Membership.Role.MEMBER)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
     used_at = models.DateTimeField(null=True, blank=True)
+    # Existing user-less Person that accepting this invite links to a user.
+    person = models.ForeignKey(Person, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta(TokenModel.Meta):
         constraints = TokenModel.Meta.constraints + [
@@ -305,16 +327,25 @@ class AuditLogQuerySet(models.QuerySet):
         raise TypeError("AuditLog is append-only.")
 
 
+RECIPIENT_REQUIRED_ACTIONS = ["claim", "release", "assign", "pledge"]
+
+
 class AuditLog(TenantModel):
     """Append-only at the model layer so app code cannot rewrite history. Database
     privileges (INSERT/SELECT only for the app role) are the real guarantee and are
     left to the RLS/grants PR.
+
+    Claim, release, assign and pledge rows must name the list's recipient so the
+    recipient's own audit view can be excluded (surprise rule).
     """
+
+    family_scoped = ("recipient_person",)
 
     class Action(models.TextChoices):
         CLAIM = "claim"
         RELEASE = "release"
         ASSIGN = "assign"
+        PLEDGE = "pledge"
         INVITE = "invite"
         LINK_ISSUE = "link_issue"
         LINK_REVOKE = "link_revoke"
@@ -322,6 +353,9 @@ class AuditLog(TenantModel):
         LOGIN = "login"
 
     actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    principal_type = models.CharField(max_length=32, null=True, blank=True)
+    principal_id = models.PositiveBigIntegerField(null=True, blank=True)
+    recipient_person = models.ForeignKey(Person, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     action = models.CharField(max_length=20, choices=Action)
     target_type = models.CharField(max_length=64, blank=True)
     target_id = models.PositiveBigIntegerField(null=True, blank=True)
@@ -335,9 +369,15 @@ class AuditLog(TenantModel):
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(
-                    action__in=["claim", "release", "assign", "invite", "link_issue", "link_revoke", "role_change", "login"]
+                    action__in=[
+                        "claim", "release", "assign", "pledge", "invite", "link_issue", "link_revoke", "role_change", "login",
+                    ]
                 ),
                 name="auditlog_action_valid",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(action__in=RECIPIENT_REQUIRED_ACTIONS) | models.Q(recipient_person__isnull=False),
+                name="auditlog_recipient_required",
             ),
         ]
 
@@ -352,3 +392,16 @@ class AuditLog(TenantModel):
 
     def delete(self, *args, **kwargs):
         raise TypeError("AuditLog rows cannot be deleted.")
+
+
+class ClaimNotification(TenantModel):
+    """Outbox: rows to notify a claimer that a claimed item changed. Ids are plain
+    bigints (no FKs) so a row survives the claim or item being deleted.
+    """
+
+    claim_id = models.PositiveBigIntegerField(null=True, blank=True)
+    item_id = models.PositiveBigIntegerField()
+    claimer_id = models.PositiveBigIntegerField()
+    kind = models.CharField(max_length=32)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
