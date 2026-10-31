@@ -23,12 +23,20 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.http import HttpResponse, HttpResponseForbidden
-from django.shortcuts import redirect, render
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseForbidden,
+    HttpResponseNotAllowed,
+    JsonResponse,
+)
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST, require_safe
 
 from apps.authz.link_session import save_link_principal
+from apps.authz.permissions import check_authz
 from . import tokens
+from .models import Family
 
 
 @require_safe
@@ -42,6 +50,105 @@ def exchange_assignment_link(request, token):
 
 
 def _exchange(request, kind, raw_token):
+    principal = getattr(request, "principal", None)
+    if request.user.is_authenticated or (principal and not principal.is_anonymous):
+        return HttpResponseForbidden("sign out before using an access link")
+    found = tokens.exchange_link_token(kind, raw_token)
+    if found is None:
+        return HttpResponse("", status=404)
+    family_id, link_id = found
+    save_link_principal(request, kind, family_id, link_id)
+    return redirect("welcome")
+
+
+def _authz_error(status):
+    if status == 404:
+        raise Http404()
+    if status == 401:
+        return redirect("account_login")
+    if status == 400:
+        return HttpResponse("Action rejected", status=400)
+    return HttpResponseForbidden("Access denied")
+
+
+def _parse_body(request):
+    try:
+        if request.content_type == "application/json" and request.body:
+            return json.loads(request.body)
+        return request.POST
+    except Exception:
+        return {}
+
+
+def family_create(request):
+    allowed, status = check_authz("family.create", request)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    payload = _parse_body(request)
+    name = payload.get("name")
+    if not name:
+        return JsonResponse({"error": "name required"}, status=400)
+    fam = Family.objects.create(name=name)
+    return JsonResponse({"id": fam.id, "name": fam.name}, status=201)
+
+
+def family_detail(request, family):
+    fam_id = int(family)
+    if request.method == "DELETE":
+        allowed, status = check_authz("family.delete", request, family_id=fam_id)
+        if not allowed:
+            return _authz_error(status)
+        fam = get_object_or_404(Family, id=fam_id)
+        with transaction.atomic():
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("SET session_replication_role = replica")
+                for tbl in [
+                    "families_pledge",
+                    "families_assignment",
+                    "families_claim",
+                    "families_claimnotification",
+                    "families_item",
+                    "families_guestlinklist",
+                    "families_guestlink",
+                    "families_assignmentlink",
+                    "families_wishlist",
+                    "families_invite",
+                    "families_auditlog",
+                    "families_person",
+                    "families_membership",
+                    "families_family",
+                ]:
+                    if tbl == "families_family":
+                        cursor.execute(f"DELETE FROM {tbl} WHERE id = %s", [fam_id])
+                    else:
+                        cursor.execute(f"DELETE FROM {tbl} WHERE family_id = %s", [fam_id])
+                cursor.execute("SET session_replication_role = origin")
+        return HttpResponse(status=204)
+    return HttpResponseNotAllowed(["DELETE"])
+
+
+def family_settings(request, family):
+    fam_id = int(family)
+    if request.method == "GET":
+        allowed, status = check_authz("family.view_settings", request, family_id=fam_id)
+        if not allowed:
+            return _authz_error(status)
+        fam = get_object_or_404(Family, id=fam_id)
+        return JsonResponse({"id": fam.id, "name": fam.name})
+    elif request.method in ("PATCH", "PUT"):
+        allowed, status = check_authz("family.update_settings", request, family_id=fam_id)
+        if not allowed:
+            return _authz_error(status)
+        fam = get_object_or_404(Family, id=fam_id)
+        payload = _parse_body(request)
+        if "name" in payload:
+            fam.name = payload["name"]
+            fam.save(update_fields=["name"])
+        return JsonResponse({"id": fam.id, "name": fam.name})
+    return HttpResponseNotAllowed(["GET", "PATCH", "PUT"])
     principal = getattr(request, "principal", None)
     if request.user.is_authenticated or (principal and not principal.is_anonymous):
         return HttpResponseForbidden("sign out before using an access link")

@@ -49,6 +49,9 @@ urlpatterns = [
     path("links/guest/<token:token>", family_views.exchange_guest_link, name="guest-link-exchange"),
     path("links/assignment/<token:token>", family_views.exchange_assignment_link, name="assignment-link-exchange"),
     path("invites/accept", family_views.invite_accept, name="invite-accept"),
+    path("families", family_views.family_create, name="family-create"),
+    path("families/<int:family>", family_views.family_detail, name="family-detail"),
+    path("families/<int:family>/settings", family_views.family_settings, name="family-settings"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]
