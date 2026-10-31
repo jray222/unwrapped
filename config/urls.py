@@ -52,6 +52,11 @@ urlpatterns = [
     path("families", family_views.family_create, name="family-create"),
     path("families/<int:family>", family_views.family_detail, name="family-detail"),
     path("families/<int:family>/settings", family_views.family_settings, name="family-settings"),
+    path("families/<int:family>/invites", family_views.invite_create, name="invite-create"),
+    path("invites/<int:invite>/revoke", family_views.invite_revoke, name="invite-revoke"),
+    path("families/<int:family>/members", family_views.member_list, name="member-list"),
+    path("members/<int:member>", family_views.member_detail, name="member-detail"),
+    path("members/<int:member>/leave", family_views.member_leave, name="member-leave"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]

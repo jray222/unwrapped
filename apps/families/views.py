@@ -20,6 +20,7 @@ would let a member ride a guest's scope, and nobody has a use case).
 """
 
 import json
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -31,12 +32,13 @@ from django.http import (
     JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST, require_safe
 
 from apps.authz.link_session import save_link_principal
 from apps.authz.permissions import check_authz
 from . import tokens
-from .models import Family
+from .models import Family, Invite, Membership, Person
 
 
 @require_safe
@@ -149,21 +151,106 @@ def family_settings(request, family):
             fam.save(update_fields=["name"])
         return JsonResponse({"id": fam.id, "name": fam.name})
     return HttpResponseNotAllowed(["GET", "PATCH", "PUT"])
-    principal = getattr(request, "principal", None)
-    if request.user.is_authenticated or (principal and not principal.is_anonymous):
-        return HttpResponseForbidden("sign out before using an access link")
-    found = tokens.exchange_link_token(kind, raw_token)
-    if found is None:
-        # No DB state, no cookie, no detail about which of the failure reasons
-        # applied, and nothing worth logging (the token in this URL's path
-        # reached us only through this response path; we answer and forget).
-        return HttpResponse("", status=404)
-    family_id, link_id = found
-    save_link_principal(request, kind, family_id, link_id)
-    # 302 to a URL that does not contain the token (rule 7): the browser goes
-    # to the landing page, and the token never appears in a Referer header on
-    # any outgoing request the landing page may make.
-    return redirect("welcome")
+
+
+def invite_create(request, family):
+    fam_id = int(family)
+    allowed, status = check_authz("invite.create", request, family_id=fam_id)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    payload = _parse_body(request)
+    email = payload.get("email")
+    if not email:
+        return JsonResponse({"error": "email required"}, status=400)
+    fam = get_object_or_404(Family, id=fam_id)
+    raw_token = tokens.new_token()
+    invite = Invite.objects.create(
+        family=fam,
+        created_by=request.user,
+        email=email,
+        token_hash=tokens.hash_token(raw_token),
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+    return JsonResponse({"id": invite.id, "email": invite.email, "token": raw_token}, status=201)
+
+
+def invite_revoke(request, invite):
+    invite_id = int(invite)
+    inv = get_object_or_404(Invite, id=invite_id)
+    allowed, status = check_authz("invite.revoke", request, family_id=inv.family_id, invite=inv)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    inv.revoked_at = timezone.now()
+    inv.save(update_fields=["revoked_at"])
+    return JsonResponse({"status": "revoked"})
+
+
+def member_list(request, family):
+    fam_id = int(family)
+    allowed, status = check_authz("member.list", request, family_id=fam_id)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    memberships = Membership.objects.filter(family_id=fam_id).select_related("user")
+    persons = {p.user_id: p.first_name for p in Person.objects.filter(family_id=fam_id, user__isnull=False)}
+    data = [
+        {
+            "id": m.id,
+            "user_id": m.user_id,
+            "role": m.role,
+            "first_name": persons.get(m.user_id, ""),
+            "name": persons.get(m.user_id, ""),
+        }
+        for m in memberships
+    ]
+    return JsonResponse({"members": data})
+
+
+def member_detail(request, member):
+    mem_id = int(member)
+    mem = get_object_or_404(Membership, id=mem_id)
+    if request.method == "DELETE":
+        allowed, status = check_authz("member.remove", request, family_id=mem.family_id, member=mem)
+        if not allowed:
+            return _authz_error(status)
+        mem.delete()
+        return HttpResponse(status=204)
+    elif request.method in ("PATCH", "PUT"):
+        allowed, status = check_authz("member.change_role", request, family_id=mem.family_id, member=mem)
+        if not allowed:
+            return _authz_error(status)
+        payload = _parse_body(request)
+        new_role = payload.get("role")
+        if new_role in ("family_admin", "member"):
+            if mem.role == "family_admin" and new_role == "member":
+                other_admins = (
+                    Membership.objects.filter(family_id=mem.family_id, role="family_admin")
+                    .exclude(id=mem.id)
+                    .count()
+                )
+                if other_admins == 0:
+                    return HttpResponse("Action rejected", status=400)
+            mem.role = new_role
+            mem.save(update_fields=["role"])
+        return JsonResponse({"id": mem.id, "role": mem.role})
+    return HttpResponseNotAllowed(["DELETE", "PATCH"])
+
+
+def member_leave(request, member):
+    mem_id = int(member)
+    mem = get_object_or_404(Membership, id=mem_id)
+    allowed, status = check_authz("member.leave", request, family_id=mem.family_id, member=mem)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    mem.delete()
+    return HttpResponse(status=204)
 
 
 @require_safe
