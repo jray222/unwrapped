@@ -1,0 +1,170 @@
+# Authorization matrix — source of truth for permissions and generated tests.
+# Default is DENY. Anything not listed here is denied.
+# Changes require a human-reviewed PR.
+
+version: 1
+default: deny
+
+principals:
+  - anonymous
+  - instance_admin
+  - family_admin
+  - member
+  - guest            # personal guest link, scoped to listed lists in one family
+  - assignment_link  # optional scoped link, sees only own assignments
+
+# Conditions evaluated against the actor and the target resource.
+conditions:
+  same_family:       actor belongs to the resource's family
+  in_guest_scope:    list is in the guest link's allowed lists
+  is_recipient:      actor is the person the list is for
+  is_list_manager:   actor created the list, or manages it on the recipient's behalf
+  is_claimer:        actor made this claim or pledge
+  is_assigner:       actor created this assignment
+  is_assignee:       actor is the person the assignment is for
+  is_self:           target user is the actor
+  not_last_admin:    action would not leave the family without a family_admin
+
+# Applied to every rule, before the rule's own conditions.
+global_rules:
+  - id: G1
+    rule: All family-scoped actions require same_family. Cross-family access returns 404.
+  - id: G2
+    rule: instance_admin is never same_family for content (lists, items, claims, pledges, assignments, audit log).
+  - id: G3
+    rule: guest and assignment_link principals are denied after revocation or expiry.
+
+rules:
+  # --- Instance ---
+  family.create:          { allow: [instance_admin] }
+  family.delete:          { allow: [instance_admin] }
+  family.view_settings:   { allow: [family_admin] }
+  family.update_settings: { allow: [family_admin] }
+
+  # --- Membership and invites ---
+  invite.create:          { allow: [family_admin] }
+  invite.revoke:          { allow: [family_admin] }
+  invite.accept:          { allow: [anonymous], when: [token_valid, email_matches_invite] }
+  member.list:            { allow: [family_admin, member] }
+  member.remove:          { allow: [family_admin], when: [not_last_admin] }
+  member.change_role:     { allow: [family_admin], when: [not_last_admin] }
+  member.leave:           { allow: [family_admin, member], when: [is_self, not_last_admin] }
+
+  # --- Guest and assignment links ---
+  guest_link.issue:       { allow: [family_admin, member] }
+  guest_link.revoke:      { allow: [family_admin, member], member_when: [issued_by_actor] }
+  guest_link.exchange:    { allow: [anonymous], when: [token_valid] }
+
+  # --- Lists ---
+  list.create:            { allow: [family_admin, member] }
+  list.view:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+  list.update:            { allow: [family_admin, member], member_when: [is_list_manager] }
+  list.delete:            { allow: [family_admin, member], member_when: [is_list_manager] }
+
+  # --- Items ---
+  item.view:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+  item.create:            { allow: [family_admin, member], member_when: [is_list_manager] }
+  item.update:            { allow: [family_admin, member], member_when: [is_list_manager] }
+  item.delete:            { allow: [family_admin, member], member_when: [is_list_manager] }
+
+  # --- Claims (surprise rule applies) ---
+  claim.view:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+    deny_when: [is_recipient]
+  claim.create:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+    deny_when: [is_recipient, quantity_exhausted_and_no_duplicates]
+  claim.release:
+    allow: [family_admin, member, guest]
+    when: [is_claimer]
+    family_admin_when: []        # admins may release any claim
+    deny_when: [is_recipient]
+
+  # --- Group gift pledges (surprise rule applies) ---
+  pledge.view:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+    deny_when: [is_recipient]
+  pledge.create:
+    allow: [family_admin, member, guest]
+    guest_when: [in_guest_scope]
+    deny_when: [is_recipient]
+  pledge.update:
+    allow: [family_admin, member, guest]
+    when: [is_claimer]
+    deny_when: [is_recipient]
+
+  # --- Assignments (surprise rule applies) ---
+  assignment.create:
+    allow: [family_admin, member]
+    deny_when: [is_recipient, assignee_is_recipient]
+  assignment.view:
+    allow: [family_admin, member, assignment_link]
+    assignment_link_when: [is_assignee]
+    deny_when: [is_recipient]
+  assignment.mark_bought:
+    allow: [family_admin, member, assignment_link]
+    member_when: [is_assigner]
+    assignment_link_when: [is_assignee]
+  assignment.mark_couldnt_get:
+    allow: [family_admin, member, assignment_link]
+    member_when: [is_assigner]
+    assignment_link_when: [is_assignee]
+  assignment.cancel:      { allow: [family_admin, member], member_when: [is_assigner] }
+  assignment.share_card:  { allow: [family_admin, member], member_when: [is_assigner] }
+
+  # --- Audit ---
+  audit_log.view:         { allow: [family_admin] }
+
+# Properties that must hold everywhere. Each needs dedicated tests.
+invariants:
+  - id: I1
+    name: surprise_rule
+    statement: >
+      A recipient's responses for their own list are identical whether or not
+      items are claimed, pledged, or assigned: same fields, same ordering,
+      same status codes, same item counts.
+  - id: I2
+    name: cross_family_404
+    statement: >
+      Any principal targeting another family's resource gets 404 with no
+      difference in timing-insensitive response content versus a nonexistent id.
+  - id: I3
+    name: token_hygiene
+    statement: >
+      Tokens never appear in logs, rendered pages, Referer headers, or the
+      final URL after exchange. Stored only as hashes.
+  - id: I4
+    name: mfa_gate
+    statement: >
+      A local account without enrolled MFA can reach only MFA enrollment and logout.
+  - id: I5
+    name: rls_backstop
+    statement: >
+      With app-layer filtering bypassed (raw queryset), RLS still blocks
+      cross-family reads and recipient claim reads.
+
+test_generation:
+  instructions: >
+    For each rule: one allow test per allowed principal with conditions met;
+    one deny test per allowed principal with each condition unmet; one deny
+    test for every principal not in allow. For each deny_when: a test proving
+    denial when it holds. Apply G1 to every rule with a cross-family case.
+    Name tests test_<rule>__<principal>__<case>, e.g.
+    test_claim_view__member__is_recipient_denied.
+  fixtures:
+    families: [alpha, beta]
+    per_family:
+      - family_admin
+      - member_recipient   # has a list made for them
+      - member_giver
+      - guest_scoped       # scoped to member_recipient's list
+      - guest_unscoped     # scoped to a different list
+      - assignee_link
+    shared_user: grandma   # member of alpha, guest in beta
