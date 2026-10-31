@@ -61,6 +61,8 @@ urlpatterns = [
     path("guest-links/<int:guest_link>/revoke", family_views.guest_link_revoke, name="guest-link-revoke"),
     path("families/<int:family>/lists", family_views.list_create, name="list-create"),
     path("lists/<int:list>", family_views.list_detail, name="list-detail"),
+    path("lists/<int:list>/items", family_views.item_create, name="item-create"),
+    path("items/<int:item>", family_views.item_detail, name="item-detail"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]

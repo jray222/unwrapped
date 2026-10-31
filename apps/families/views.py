@@ -43,6 +43,7 @@ from .models import (
     GuestLink,
     GuestLinkList,
     Invite,
+    Item,
     LINK_MAX_DAYS,
     Membership,
     Person,
@@ -366,6 +367,81 @@ def list_detail(request, list):
         if not allowed:
             return _authz_error(status)
         lst.delete()
+        return HttpResponse(status=204)
+    return HttpResponseNotAllowed(["GET", "PATCH", "DELETE"])
+
+
+def item_create(request, list):
+    list_id = int(list)
+    lst = get_object_or_404(WishList, id=list_id)
+    allowed, status = check_authz("item.create", request, family_id=lst.family_id, list=lst)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    payload = _parse_body(request)
+    name = payload.get("name")
+    if not name:
+        return JsonResponse({"error": "name required"}, status=400)
+    quantity = payload.get("quantity", 1)
+    try:
+        quantity = max(1, int(quantity))
+    except (ValueError, TypeError):
+        quantity = 1
+    item = Item.objects.create(
+        family=lst.family,
+        list=lst,
+        name=name,
+        quantity=quantity,
+        notes=payload.get("notes", ""),
+        store_name=payload.get("store_name", ""),
+        store_url=payload.get("store_url", ""),
+        allow_duplicates=bool(payload.get("allow_duplicates", False)),
+    )
+    return JsonResponse({"id": item.id, "name": item.name, "list": lst.id}, status=201)
+
+
+def item_detail(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    if request.method == "GET":
+        allowed, status = check_authz("item.view", request, family_id=target_item.family_id, item=target_item)
+        if not allowed:
+            return _authz_error(status)
+        return JsonResponse({
+            "id": target_item.id,
+            "name": target_item.name,
+            "list": target_item.list_id,
+            "quantity": target_item.quantity,
+            "notes": target_item.notes,
+            "store_name": target_item.store_name,
+            "store_url": target_item.store_url,
+        })
+    elif request.method in ("PATCH", "PUT"):
+        allowed, status = check_authz("item.update", request, family_id=target_item.family_id, item=target_item)
+        if not allowed:
+            return _authz_error(status)
+        payload = _parse_body(request)
+        if "name" in payload:
+            target_item.name = payload["name"]
+        if "quantity" in payload:
+            try:
+                target_item.quantity = max(1, int(payload["quantity"]))
+            except (ValueError, TypeError):
+                pass
+        if "notes" in payload:
+            target_item.notes = payload["notes"]
+        if "store_name" in payload:
+            target_item.store_name = payload["store_name"]
+        if "store_url" in payload:
+            target_item.store_url = payload["store_url"]
+        target_item.save()
+        return JsonResponse({"id": target_item.id, "name": target_item.name})
+    elif request.method == "DELETE":
+        allowed, status = check_authz("item.delete", request, family_id=target_item.family_id, item=target_item)
+        if not allowed:
+            return _authz_error(status)
+        target_item.delete()
         return HttpResponse(status=204)
     return HttpResponseNotAllowed(["GET", "PATCH", "DELETE"])
 

@@ -85,11 +85,11 @@ def check_authz(rule, request, *, family_id=None, **targets):
 
     # G2: instance_admin is never same_family for content
     CONTENT_RULES = (
-        "list.view", "list.update", "list.delete",
-        "item.view", "item.update", "item.delete",
+        "list.create", "list.view", "list.update", "list.delete",
+        "item.create", "item.view", "item.update", "item.delete",
         "claim.view", "claim.create", "claim.release",
         "pledge.view", "pledge.create", "pledge.update",
-        "assignment.view", "assignment.mark_bought", "assignment.mark_couldnt_get",
+        "assignment.create", "assignment.view", "assignment.mark_bought", "assignment.mark_couldnt_get",
         "assignment.cancel", "assignment.share_card",
         "audit_log.view",
     )
