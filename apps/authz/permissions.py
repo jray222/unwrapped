@@ -83,6 +83,19 @@ def check_authz(rule, request, *, family_id=None, **targets):
     if role == "cross_family":
         return False, 404
 
+    # G2: instance_admin is never same_family for content
+    CONTENT_RULES = (
+        "list.view", "list.update", "list.delete",
+        "item.view", "item.update", "item.delete",
+        "claim.view", "claim.create", "claim.release",
+        "pledge.view", "pledge.create", "pledge.update",
+        "assignment.view", "assignment.mark_bought", "assignment.mark_couldnt_get",
+        "assignment.cancel", "assignment.share_card",
+        "audit_log.view",
+    )
+    if role == "instance_admin" and rule in CONTENT_RULES:
+        return False, 404
+
     # Anonymous attempting restricted action
     if role == "anonymous" and rule not in ("invite.accept", "guest_link.exchange", "assignment_link.exchange"):
         return False, 401

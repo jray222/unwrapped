@@ -38,7 +38,16 @@ from django.views.decorators.http import require_POST, require_safe
 from apps.authz.link_session import save_link_principal
 from apps.authz.permissions import check_authz
 from . import tokens
-from .models import Family, Invite, Membership, Person
+from .models import (
+    Family,
+    GuestLink,
+    GuestLinkList,
+    Invite,
+    LINK_MAX_DAYS,
+    Membership,
+    Person,
+    WishList,
+)
 
 
 @require_safe
@@ -251,6 +260,114 @@ def member_leave(request, member):
         return HttpResponseNotAllowed(["POST"])
     mem.delete()
     return HttpResponse(status=204)
+
+
+def guest_link_create(request, family):
+    fam_id = int(family)
+    allowed, status = check_authz("guest_link.issue", request, family_id=fam_id)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    payload = _parse_body(request)
+    fam = get_object_or_404(Family, id=fam_id)
+
+    raw_person = payload.get("person")
+    if not raw_person:
+        return JsonResponse({"error": "person required"}, status=400)
+
+    try:
+        person_obj = Person.objects.get(id=int(raw_person), family=fam)
+    except (ValueError, TypeError, Person.DoesNotExist):
+        person_obj = Person.objects.create(family=fam, first_name=str(raw_person))
+
+    days = payload.get("expires_in_days", 30)
+    try:
+        days = min(int(days), LINK_MAX_DAYS)
+    except (ValueError, TypeError):
+        days = 30
+
+    raw_token = tokens.new_token()
+    link = GuestLink.objects.create(
+        family=fam,
+        issued_by=request.user,
+        person=person_obj,
+        token_hash=tokens.hash_token(raw_token),
+        expires_at=timezone.now() + timedelta(days=days),
+    )
+
+    list_ids = payload.get("lists", [])
+    for lid in list_ids:
+        try:
+            target_l = WishList.objects.get(id=int(lid), family=fam)
+            GuestLinkList.objects.create(family=fam, guest_link=link, list=target_l)
+        except (ValueError, TypeError, WishList.DoesNotExist):
+            return _authz_error(404)
+
+    return JsonResponse(
+        {"id": link.id, "token": raw_token, "expires_in_days": days},
+        status=201,
+    )
+
+
+def guest_link_revoke(request, guest_link):
+    link_id = int(guest_link)
+    link = get_object_or_404(GuestLink, id=link_id)
+    allowed, status = check_authz("guest_link.revoke", request, family_id=link.family_id, guest_link=link)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    link.revoked_at = timezone.now()
+    link.save(update_fields=["revoked_at"])
+    return JsonResponse({"status": "revoked"})
+
+
+def list_create(request, family):
+    fam_id = int(family)
+    allowed, status = check_authz("list.create", request, family_id=fam_id)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    payload = _parse_body(request)
+    title = payload.get("title")
+    recip_id = payload.get("recipient")
+    if not title or not recip_id:
+        return JsonResponse({"error": "title and recipient required"}, status=400)
+    fam = get_object_or_404(Family, id=fam_id)
+    try:
+        recip = Person.objects.get(id=int(recip_id), family=fam)
+    except (ValueError, TypeError, Person.DoesNotExist):
+        return _authz_error(404)
+    lst = WishList.objects.create(family=fam, recipient=recip, created_by=request.user, title=title)
+    return JsonResponse({"id": lst.id, "title": lst.title, "recipient": lst.recipient_id}, status=201)
+
+
+def list_detail(request, list):
+    list_id = int(list)
+    lst = get_object_or_404(WishList, id=list_id)
+    if request.method == "GET":
+        allowed, status = check_authz("list.view", request, family_id=lst.family_id, list=lst)
+        if not allowed:
+            return _authz_error(status)
+        return JsonResponse({"id": lst.id, "title": lst.title, "recipient": lst.recipient_id})
+    elif request.method in ("PATCH", "PUT"):
+        allowed, status = check_authz("list.update", request, family_id=lst.family_id, list=lst)
+        if not allowed:
+            return _authz_error(status)
+        payload = _parse_body(request)
+        if "title" in payload:
+            lst.title = payload["title"]
+            lst.save(update_fields=["title"])
+        return JsonResponse({"id": lst.id, "title": lst.title, "recipient": lst.recipient_id})
+    elif request.method == "DELETE":
+        allowed, status = check_authz("list.delete", request, family_id=lst.family_id, list=lst)
+        if not allowed:
+            return _authz_error(status)
+        lst.delete()
+        return HttpResponse(status=204)
+    return HttpResponseNotAllowed(["GET", "PATCH", "DELETE"])
 
 
 @require_safe
