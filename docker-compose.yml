@@ -1,5 +1,6 @@
 services:
   app:
+    image: ghcr.io/jray222/unwrapped:latest
     build: .
     user: "10001:10001"
     read_only: true
