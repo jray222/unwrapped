@@ -131,3 +131,31 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Never log bearer tokens or URLs containing them (CLAUDE.md rule 7).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "mask_tokens": {
+            "()": "config.logging.TokenSanitizingFilter",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["mask_tokens"],
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "filters": ["mask_tokens"],
+        },
+        "django": {
+            "filters": ["mask_tokens"],
+        },
+    },
+    "root": {
+        "filters": ["mask_tokens"],
+    },
+}
