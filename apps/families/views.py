@@ -42,7 +42,8 @@ def exchange_assignment_link(request, token):
 
 
 def _exchange(request, kind, raw_token):
-    if request.user.is_authenticated:
+    principal = getattr(request, "principal", None)
+    if request.user.is_authenticated or (principal and not principal.is_anonymous):
         return HttpResponseForbidden("sign out before using an access link")
     found = tokens.exchange_link_token(kind, raw_token)
     if found is None:
@@ -75,7 +76,8 @@ def welcome(request):
 @require_POST
 def invite_accept(request):
     """Accept an invite to join a family (single use, anonymous only)."""
-    if request.user.is_authenticated:
+    principal = getattr(request, "principal", None)
+    if request.user.is_authenticated or (principal and not principal.is_anonymous):
         return HttpResponseForbidden("sign out before accepting an invite")
 
     try:
