@@ -63,6 +63,13 @@ DATABASES = {
     }
 }
 
+# Optional Postgres template cloned for every pytest-created test database
+# (tests/make_test_template.sh). db/init SQL such as the schema rls created by
+# 02-rls-roles.sql exists only on the main data volume, so test databases need
+# to inherit it. Unset in prod: nothing there creates test databases.
+if os.environ.get("DB_TEST_TEMPLATE"):
+    DATABASES["default"]["TEST"] = {"TEMPLATE": os.environ["DB_TEST_TEMPLATE"]}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
