@@ -9,7 +9,10 @@ os.environ.setdefault("DB_HOST", "localhost")
 # the db/init grant scripts ran on the template, not on the test databases.
 os.environ.setdefault("DB_TEST_TEMPLATE", "template_unwrapped")
 
-from .base import *  # noqa: E402,F401,F403
+from .base import *  # noqa: F401,F403
 
 DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+# Console mailer: password reset etc. print to stdout instead of leaving the
+# box. Prod configures the same alias with real SMTP as env-driven config.
+MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}

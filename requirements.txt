@@ -1,5 +1,7 @@
 Django==6.1.2
 djangorestframework==3.18.3
+# django-allauth[mfa] covers only the WebAuthn extras (fido2), which the
+# passkey PR will need; TOTP and recovery codes ship in the base package.
 django-allauth==65.21.1
 psycopg[binary]==3.3.6
 argon2-cffi==25.1.0
