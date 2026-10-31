@@ -19,9 +19,13 @@ user must sign out before using an access link (two principals in one session
 would let a member ride a guest's scope, and nobody has a use case).
 """
 
+import json
+
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_safe
+from django.views.decorators.http import require_POST, require_safe
 
 from apps.authz.link_session import save_link_principal
 from . import tokens
@@ -66,3 +70,42 @@ def welcome(request):
     principal = getattr(request, "principal", None)
     link_active = principal is not None and not principal.is_anonymous
     return render(request, "welcome.html", {"link_active": link_active})
+
+
+@require_POST
+def invite_accept(request):
+    """Accept an invite to join a family (single use, anonymous only)."""
+    if request.user.is_authenticated:
+        return HttpResponseForbidden("sign out before accepting an invite")
+
+    try:
+        if request.content_type == "application/json":
+            payload = json.loads(request.body)
+        else:
+            payload = request.POST
+    except Exception:
+        return HttpResponse("", status=400)
+
+    raw_token = payload.get("token")
+    email = payload.get("email")
+    if not raw_token or not email:
+        return HttpResponse("", status=400)
+
+    with transaction.atomic():
+        User = get_user_model()
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            base = email.split("@")[0] or "user"
+            username = base
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base}_{counter}"
+                counter += 1
+            user = User.objects.create_user(username=username, email=email, password=None)
+
+        accepted = tokens.accept_invite(raw_token, email, user.pk)
+        if not accepted:
+            transaction.set_rollback(True)
+            return HttpResponse("", status=400)
+
+    return redirect("account_login")

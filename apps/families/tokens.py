@@ -23,6 +23,7 @@ LINK_KINDS = frozenset({GUEST, ASSIGNMENT_LINK})
 
 _EXCHANGE = "SELECT family_id, link_id FROM rls.exchange_link_token(%s, %s)"
 _IS_ACTIVE = "SELECT rls.link_is_active(%s, %s)"
+_ACCEPT_INVITE = "SELECT rls.accept_invite(%s, %s, %s)"
 
 
 def new_token():
@@ -62,4 +63,20 @@ def link_is_active(kind, link_id):
         return False
     with connection.cursor() as cursor:
         cursor.execute(_IS_ACTIVE, [kind, link_id])
+        return bool(cursor.fetchone()[0])
+
+
+def accept_invite(raw_token, email, user_id):
+    """Attempt to accept an invite token for user_id.
+
+    Returns True if valid and accepted, False if invalid/expired/revoked/used/email mismatch.
+    """
+    if not isinstance(email, str) or not email or not (type(user_id) is int and user_id > 0):
+        return False
+    try:
+        digest = hash_token(raw_token)
+    except ValueError:
+        return False
+    with connection.cursor() as cursor:
+        cursor.execute(_ACCEPT_INVITE, [digest, email, user_id])
         return bool(cursor.fetchone()[0])

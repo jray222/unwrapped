@@ -48,6 +48,7 @@ urlpatterns = [
     # page. The token never appears outside its one request.
     path("links/guest/<token:token>", family_views.exchange_guest_link, name="guest-link-exchange"),
     path("links/assignment/<token:token>", family_views.exchange_assignment_link, name="assignment-link-exchange"),
+    path("invites/accept", family_views.invite_accept, name="invite-accept"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]
