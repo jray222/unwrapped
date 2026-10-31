@@ -63,6 +63,12 @@ urlpatterns = [
     path("lists/<int:list>", family_views.list_detail, name="list-detail"),
     path("lists/<int:list>/items", family_views.item_create, name="item-create"),
     path("items/<int:item>", family_views.item_detail, name="item-detail"),
+    path("items/<int:item>/claims", family_views.claim_list, name="claim-list"),
+    path("items/<int:item>/claims/create", family_views.claim_create, name="claim-create"),
+    path("claims/<int:claim>/release", family_views.claim_release, name="claim-release"),
+    path("items/<int:item>/pledges", family_views.pledge_list, name="pledge-list"),
+    path("items/<int:item>/pledges/create", family_views.pledge_create, name="pledge-create"),
+    path("pledges/<int:pledge>", family_views.pledge_detail, name="pledge-detail"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]

@@ -226,10 +226,10 @@ def check_authz(rule, request, *, family_id=None, **targets):
         if not target_item:
             return False, 404
 
-        # Surprise rule: recipient is denied
+        # Surprise rule: recipient is denied with 404
         recipient_person_id = target_item.list.recipient_id
         if actor_person and actor_person.id == recipient_person_id:
-            return False, 403
+            return False, 404
 
         if role == "guest":
             principal = getattr(request, "principal", None)
@@ -262,7 +262,7 @@ def check_authz(rule, request, *, family_id=None, **targets):
 
         recipient_person_id = target_item.list.recipient_id
         if actor_person and actor_person.id == recipient_person_id:
-            return False, 403
+            return False, 404
 
         if role == "guest":
             principal = getattr(request, "principal", None)
@@ -292,7 +292,7 @@ def check_authz(rule, request, *, family_id=None, **targets):
             return False, 404
         recipient_person_id = target_item.list.recipient_id
         if actor_person and actor_person.id == recipient_person_id:
-            return False, 403
+            return False, 404
         assignee_person = targets.get("assignee")
         if assignee_person and assignee_person.id == recipient_person_id:
             return False, 400
@@ -306,7 +306,7 @@ def check_authz(rule, request, *, family_id=None, **targets):
             return False, 404
         recipient_person_id = target_assignment.item.list.recipient_id
         if actor_person and actor_person.id == recipient_person_id:
-            return False, 403
+            return False, 404
         if role in ("family_admin", "member"):
             return True, 200
         if role == "assignment_link" and actor_person and target_assignment.assignee_id == actor_person.id:

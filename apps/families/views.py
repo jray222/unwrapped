@@ -36,9 +36,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST, require_safe
 
 from apps.authz.link_session import save_link_principal
-from apps.authz.permissions import check_authz
+from apps.authz.permissions import check_authz, get_actor_context
 from . import tokens
 from .models import (
+    Claim,
     Family,
     GuestLink,
     GuestLinkList,
@@ -47,8 +48,10 @@ from .models import (
     LINK_MAX_DAYS,
     Membership,
     Person,
+    Pledge,
     WishList,
 )
+from .services import QuantityExhausted, create_claim
 
 
 @require_safe
@@ -444,6 +447,102 @@ def item_detail(request, item):
         target_item.delete()
         return HttpResponse(status=204)
     return HttpResponseNotAllowed(["GET", "PATCH", "DELETE"])
+
+
+def claim_list(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    allowed, status = check_authz("claim.view", request, family_id=target_item.family_id, item=target_item)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    claims = Claim.objects.filter(item=target_item).select_related("claimer")
+    data = [
+        {"id": c.id, "item_id": c.item_id, "claimer_id": c.claimer_id, "name": c.claimer.first_name, "claimer": c.claimer.first_name}
+        for c in claims
+    ]
+    return JsonResponse({"claims": data})
+
+
+def claim_create(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    allowed, status = check_authz("claim.create", request, family_id=target_item.family_id, item=target_item)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    _, actor_person, _ = get_actor_context(request, target_item.family_id)
+    if not actor_person:
+        return _authz_error(403)
+    try:
+        claim = create_claim(item=target_item, claimer=actor_person)
+    except QuantityExhausted:
+        return HttpResponse("Quantity exhausted", status=400)
+    except Exception:
+        return HttpResponse("Action rejected", status=400)
+    return JsonResponse({"id": claim.id, "claimer": actor_person.first_name}, status=201)
+
+
+def claim_release(request, claim):
+    claim_id = int(claim)
+    target_claim = get_object_or_404(Claim.objects.select_related("item__list"), id=claim_id)
+    allowed, status = check_authz("claim.release", request, family_id=target_claim.family_id, claim=target_claim)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target_claim.delete()
+    return HttpResponse(status=204)
+
+
+def pledge_list(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    allowed, status = check_authz("pledge.view", request, family_id=target_item.family_id, item=target_item)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    pledges = Pledge.objects.filter(item=target_item).select_related("pledger")
+    data = [
+        {"id": p.id, "item_id": p.item_id, "pledger": p.pledger.first_name, "name": p.pledger.first_name, "amount": str(p.amount) if p.amount is not None else None}
+        for p in pledges
+    ]
+    return JsonResponse({"pledges": data})
+
+
+def pledge_create(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    allowed, status = check_authz("pledge.create", request, family_id=target_item.family_id, item=target_item)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    _, actor_person, _ = get_actor_context(request, target_item.family_id)
+    if not actor_person:
+        return _authz_error(403)
+    payload = _parse_body(request)
+    amount = payload.get("amount", 10)
+    pledge = Pledge.objects.create(family=target_item.family, item=target_item, pledger=actor_person, amount=amount)
+    return JsonResponse({"id": pledge.id, "amount": str(pledge.amount), "pledger": actor_person.first_name}, status=201)
+
+
+def pledge_detail(request, pledge):
+    pledge_id = int(pledge)
+    target_pledge = get_object_or_404(Pledge.objects.select_related("item__list"), id=pledge_id)
+    if request.method in ("PATCH", "PUT"):
+        allowed, status = check_authz("pledge.update", request, family_id=target_pledge.family_id, pledge=target_pledge)
+        if not allowed:
+            return _authz_error(status)
+        payload = _parse_body(request)
+        if "amount" in payload:
+            target_pledge.amount = payload["amount"]
+            target_pledge.save(update_fields=["amount"])
+        return JsonResponse({"id": target_pledge.id, "amount": str(target_pledge.amount)})
+    return HttpResponseNotAllowed(["PATCH", "PUT"])
 
 
 @require_safe
