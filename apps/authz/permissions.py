@@ -317,6 +317,9 @@ def check_authz(rule, request, *, family_id=None, **targets):
         target_assignment = targets.get("assignment")
         if not target_assignment:
             return False, 404
+        recipient_person_id = target_assignment.item.list.recipient_id
+        if actor_person and actor_person.id == recipient_person_id:
+            return False, 404
         if role == "family_admin":
             return True, 200
         if role == "member" and target_assignment.assigner_id == request.user.id:
@@ -328,6 +331,9 @@ def check_authz(rule, request, *, family_id=None, **targets):
     if rule in ("assignment.cancel", "assignment.share_card"):
         target_assignment = targets.get("assignment")
         if not target_assignment:
+            return False, 404
+        recipient_person_id = target_assignment.item.list.recipient_id
+        if actor_person and actor_person.id == recipient_person_id:
             return False, 404
         if role == "family_admin":
             return True, 200

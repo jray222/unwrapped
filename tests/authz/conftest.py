@@ -29,6 +29,7 @@ from allauth.mfa.totp.internal.auth import TOTP, generate_totp_secret
 from apps.families import tokens
 from apps.families.models import (
     Assignment,
+    AuditLog,
     AssignmentLink,
     Claim,
     ClaimNotification,
@@ -285,7 +286,8 @@ class Family:
 
     def notifications_for(self, actor):
         person = actor.person if hasattr(actor, "person") else actor
-        return list(ClaimNotification.objects.filter(family=self._model, claimer=person))
+        pid = getattr(person, "id", person)
+        return list(ClaimNotification.objects.filter(family=self._model, claimer_id=pid))
 
 
 @dataclass
@@ -398,6 +400,25 @@ def _build_family(name):
 
     assignee_person = Person.objects.create(family=fam_model, first_name=f"{name}_Assignee")
     Assignment.objects.create(family=fam_model, item=item2, assigner=admin.user, assignee=assignee_person, status="assigned")
+
+    Invite.objects.create(
+        family=fam_model,
+        created_by=admin.user,
+        email=f"invitee_{_uid()}@example.test",
+        token_hash=tokens.hash_token(tokens.new_token()),
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    AuditLog.objects.create(
+        family=fam_model,
+        actor=admin.user,
+        principal_type="user",
+        principal_id=admin.user.id,
+        recipient_person=recipient.person,
+        action="claim",
+        target_type="item",
+        target_id=item2.id,
+    )
 
     # Links
     guest_scoped = _make_guest_actor(fam_model, recipient_list, f"{name}_GuestScoped", admin.user)

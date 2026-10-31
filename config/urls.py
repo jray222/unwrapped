@@ -69,6 +69,13 @@ urlpatterns = [
     path("items/<int:item>/pledges", family_views.pledge_list, name="pledge-list"),
     path("items/<int:item>/pledges/create", family_views.pledge_create, name="pledge-create"),
     path("pledges/<int:pledge>", family_views.pledge_detail, name="pledge-detail"),
+    path("items/<int:item>/assignments", family_views.assignment_create, name="assignment-create"),
+    path("assignments/<int:assignment>", family_views.assignment_detail, name="assignment-detail"),
+    path("assignments/<int:assignment>/bought", family_views.assignment_mark_bought, name="assignment-mark-bought"),
+    path("assignments/<int:assignment>/couldnt-get", family_views.assignment_mark_couldnt_get, name="assignment-mark-couldnt-get"),
+    path("assignments/<int:assignment>/cancel", family_views.assignment_cancel, name="assignment-cancel"),
+    path("assignments/<int:assignment>/share-card", family_views.assignment_share_card, name="assignment-share-card"),
+    path("families/<int:family>/audit-log", family_views.audit_log_view, name="audit-log"),
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]

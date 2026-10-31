@@ -39,7 +39,10 @@ from apps.authz.link_session import save_link_principal
 from apps.authz.permissions import check_authz, get_actor_context
 from . import tokens
 from .models import (
+    Assignment,
+    AuditLog,
     Claim,
+    ClaimNotification,
     Family,
     GuestLink,
     GuestLinkList,
@@ -51,7 +54,7 @@ from .models import (
     Pledge,
     WishList,
 )
-from .services import QuantityExhausted, create_claim
+from .services import QuantityExhausted, create_assignment, create_claim
 
 
 @require_safe
@@ -355,7 +358,38 @@ def list_detail(request, list):
         allowed, status = check_authz("list.view", request, family_id=lst.family_id, list=lst)
         if not allowed:
             return _authz_error(status)
-        return JsonResponse({"id": lst.id, "title": lst.title, "recipient": lst.recipient_id})
+
+        actor_person_id = None
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False):
+            p = Person.objects.filter(user=user, family_id=lst.family_id).first()
+            actor_person_id = p.id if p else None
+        else:
+            principal = getattr(request, "principal", None)
+            if principal is not None and getattr(principal, "type", None) == "guest":
+                from apps.families.models import GuestLink
+                link = GuestLink.objects.filter(id=principal.link_id).first()
+                actor_person_id = link.person_id if link else None
+            elif principal is not None and getattr(principal, "type", None) == "assignment_link":
+                from apps.families.models import AssignmentLink
+                link = AssignmentLink.objects.filter(id=principal.link_id).first()
+                actor_person_id = link.person_id if link else None
+
+        is_recipient = actor_person_id is not None and actor_person_id == lst.recipient_id
+
+        parts = [f"<h1>{lst.title}</h1>"]
+        for it in Item.objects.filter(list=lst):
+            taken = ""
+            if not is_recipient:
+                claim = Claim.objects.filter(item=it).select_related("claimer").first()
+                if claim:
+                    taken = f"Taken by {claim.claimer.first_name}"
+            anchor = ""
+            if it.store_url:
+                anchor = f'<a href="{it.store_url}" rel="noopener noreferrer">store</a>'
+            parts.append(f"<div>{it.name} {taken} {anchor}</div>")
+        html = "\n".join(parts)
+        return HttpResponse(html, content_type="text/html")
     elif request.method in ("PATCH", "PUT"):
         allowed, status = check_authz("list.update", request, family_id=lst.family_id, list=lst)
         if not allowed:
@@ -438,12 +472,14 @@ def item_detail(request, item):
             target_item.store_name = payload["store_name"]
         if "store_url" in payload:
             target_item.store_url = payload["store_url"]
+
         target_item.save()
         return JsonResponse({"id": target_item.id, "name": target_item.name})
     elif request.method == "DELETE":
         allowed, status = check_authz("item.delete", request, family_id=target_item.family_id, item=target_item)
         if not allowed:
             return _authz_error(status)
+
         target_item.delete()
         return HttpResponse(status=204)
     return HttpResponseNotAllowed(["GET", "PATCH", "DELETE"])
@@ -543,6 +579,139 @@ def pledge_detail(request, pledge):
             target_pledge.save(update_fields=["amount"])
         return JsonResponse({"id": target_pledge.id, "amount": str(target_pledge.amount)})
     return HttpResponseNotAllowed(["PATCH", "PUT"])
+
+
+def assignment_create(request, item):
+    item_id = int(item)
+    target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
+    payload = _parse_body(request)
+    raw_assignee = payload.get("assignee")
+    if not raw_assignee:
+        return JsonResponse({"error": "assignee required"}, status=400)
+    try:
+        assignee_person = Person.objects.get(id=int(raw_assignee), family_id=target_item.family_id)
+    except (ValueError, TypeError, Person.DoesNotExist):
+        return _authz_error(404)
+
+    allowed, status = check_authz(
+        "assignment.create",
+        request,
+        family_id=target_item.family_id,
+        item=target_item,
+        assignee=assignee_person,
+    )
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        assignment = create_assignment(
+            item=target_item,
+            assignee=assignee_person,
+            assigner=request.user,
+        )
+    except QuantityExhausted:
+        return HttpResponse("Quantity exhausted", status=400)
+    except Exception:
+        return HttpResponse("Action rejected", status=400)
+
+    return JsonResponse(
+        {"id": assignment.id, "assignee": assignee_person.first_name, "status": assignment.status},
+        status=201,
+    )
+
+
+def assignment_detail(request, assignment):
+    assign_id = int(assignment)
+    target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
+    allowed, status = check_authz("assignment.view", request, family_id=target.family_id, assignment=target)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    return JsonResponse({
+        "id": target.id,
+        "item_id": target.item_id,
+        "assignee": target.assignee.first_name,
+        "name": target.assignee.first_name,
+        "status": target.status,
+    })
+
+
+def assignment_mark_bought(request, assignment):
+    assign_id = int(assignment)
+    target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
+    allowed, status = check_authz("assignment.mark_bought", request, family_id=target.family_id, assignment=target)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target.status = Assignment.Status.BOUGHT
+    target.save(update_fields=["status"])
+    return JsonResponse({"id": target.id, "status": target.status})
+
+
+def assignment_mark_couldnt_get(request, assignment):
+    assign_id = int(assignment)
+    target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
+    allowed, status = check_authz("assignment.mark_couldnt_get", request, family_id=target.family_id, assignment=target)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target.status = Assignment.Status.COULDNT_GET
+    target.save(update_fields=["status"])
+    return JsonResponse({"id": target.id, "status": target.status})
+
+
+def assignment_cancel(request, assignment):
+    assign_id = int(assignment)
+    target = get_object_or_404(Assignment.objects.select_related("item__list"), id=assign_id)
+    allowed, status = check_authz("assignment.cancel", request, family_id=target.family_id, assignment=target)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target.delete()
+    return HttpResponse(status=204)
+
+
+def assignment_share_card(request, assignment):
+    assign_id = int(assignment)
+    target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
+    allowed, status = check_authz("assignment.share_card", request, family_id=target.family_id, assignment=target)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    return HttpResponse(b"%PDF-1.4 share card", content_type="application/pdf")
+
+
+def audit_log_view(request, family):
+    fam_id = int(family)
+    allowed, status = check_authz("audit_log.view", request, family_id=fam_id)
+    if not allowed:
+        return _authz_error(status)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    # Determine the acting person (if any) to enforce the surprise rule.
+    actor_person_id = None
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        p = Person.objects.filter(user=user, family_id=fam_id).first()
+        actor_person_id = p.id if p else None
+
+    logs_qs = AuditLog.objects.filter(family_id=fam_id)
+    claims_qs = Claim.objects.filter(family_id=fam_id).select_related("claimer", "item__list")
+    if actor_person_id is not None:
+        # Recipients must not learn claim state for their own lists.
+        logs_qs = logs_qs.exclude(recipient_person_id=actor_person_id)
+        claims_qs = claims_qs.exclude(item__list__recipient_id=actor_person_id)
+
+    claim_names = [c.claimer.first_name for c in claims_qs]
+    log_data = [{"id": l.id, "action": l.action, "created_at": str(l.created_at)} for l in logs_qs]
+    return JsonResponse({"logs": log_data, "claims": claim_names})
 
 
 @require_safe

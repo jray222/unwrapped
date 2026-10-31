@@ -122,9 +122,17 @@ def call(actor, rule, *, data=None, **targets):
     return send(url, data=json.dumps(data or {}), content_type="application/json")
 
 
+def _missing_value_for(arg):
+    # Path converters differ: integer PKs need a numeric (nonexistent) id, while
+    # token paths need a token-shaped (but nonexistent) value.
+    if arg == "token":
+        return "0" * 43
+    return "999999999"
+
+
 def call_missing(actor, rule, *, data=None):
-    missing = missing_ref()
-    targets = {arg: missing for arg in ENDPOINTS[rule].path_args}
+    targets = {arg: _missing_value_for(arg) for arg in ENDPOINTS[rule].path_args}
+    missing = next(iter(targets.values())) if targets else missing_ref()
     return call(actor, rule, data=data, **targets), missing
 
 
@@ -317,13 +325,66 @@ def token_lifetime_days(source):
     return 7
 
 
+def _principal_info(principal):
+    """Return (principal_type, principal_id) for an Actor/Principal/None."""
+    if principal is None:
+        return "", None
+    # Middleware Principal dataclass (has .type, .user_id, .link_id, no .client)
+    if hasattr(principal, "type") and hasattr(principal, "user_id") and not hasattr(principal, "client"):
+        p_type = getattr(principal, "type", None) or ""
+        if p_type == "user":
+            pid = getattr(principal, "user_id", None)
+        elif p_type in ("guest",):
+            pid = getattr(principal, "link_id", None)
+        elif p_type in ("assignment_link",):
+            pid = getattr(principal, "link_id", None)
+        elif p_type == "instance_admin":
+            pid = getattr(principal, "user_id", None)
+        else:
+            pid = getattr(principal, "user_id", None) or getattr(principal, "link_id", None)
+        return (p_type if p_type in ("user", "guest", "assignment_link", "instance_admin") else ""), pid
+
+    # Anonymous actor
+    pname = getattr(principal, "principal", None)
+    if pname in (None, "anonymous"):
+        return "", None
+
+    # Link actors
+    link = getattr(principal, "link", None)
+    if link is not None:
+        if pname == "guest":
+            return "guest", getattr(link, "id", None)
+        if pname == "assignment_link":
+            return "assignment_link", getattr(link, "id", None)
+
+    # Instance admin
+    if pname == "instance_admin":
+        user = getattr(principal, "user", None)
+        return "instance_admin", getattr(user, "id", getattr(user, "pk", None)) if user is not None else None
+
+    # Logged-in user (family_admin / member)
+    user = getattr(principal, "user", None)
+    if user is not None:
+        return "user", getattr(user, "id", getattr(user, "pk", None))
+
+    # Fallback: try ref
+    ref = getattr(principal, "ref", None)
+    try:
+        ref = int(ref)
+    except (TypeError, ValueError):
+        ref = None
+    return ("user" if pname not in ("guest", "assignment_link", "instance_admin") else pname), ref
+
+
 def _apply_gucs(cursor, family=None, principal=None):
+    # Enforce RLS even when the Django connection is a superuser: act as the
+    # unprivileged app role for these raw policy probes.
+    cursor.execute("SET LOCAL ROLE app_runtime")
     fam_id = _extract_family_id(family)
     cursor.execute("SELECT pg_catalog.set_config('app.family_id', %s, true)", ["" if fam_id is None else str(fam_id)])
     if principal is not None:
-        p_type = getattr(principal, "principal", getattr(principal, "type", "user"))
-        p_id = getattr(principal, "ref", getattr(principal, "user_id", getattr(principal, "link_id", None)))
-        cursor.execute("SELECT pg_catalog.set_config('app.principal_type', %s, true)", [str(p_type)])
+        p_type, p_id = _principal_info(principal)
+        cursor.execute("SELECT pg_catalog.set_config('app.principal_type', %s, true)", [p_type])
         cursor.execute("SELECT pg_catalog.set_config('app.principal_id', %s, true)", ["" if p_id is None else str(p_id)])
     else:
         cursor.execute("SELECT pg_catalog.set_config('app.principal_type', '', true)")
@@ -346,25 +407,43 @@ def rls_update_rowcount(table, *, family, principal, target_family):
     """Rows affected by a raw UPDATE aimed at target_family's rows under family's context."""
     phys = TABLES.get(table, table)
     tgt_id = _extract_family_id(target_family)
+    # Some tables are insert/delete-only (no UPDATE privilege for the app role),
+    # so a cross-family update touches zero rows by construction.
+    _no_update = {"audit_log", "claims", "guestlinklist", "claimnotification",
+                  "families_auditlog", "families_claim", "families_guestlinklist", "families_claimnotification"}
+    if table in _no_update:
+        return 0
     with connection.cursor() as cursor:
         _apply_gucs(cursor, family, principal)
-        cursor.execute(f"UPDATE {phys} SET updated_at = now() WHERE family_id = %s", [tgt_id])
+        cursor.execute(f"UPDATE {phys} SET created_at = created_at WHERE family_id = %s", [tgt_id])
         return cursor.rowcount
 
 
 def rls_count_for_list(table, lst, *, family, principal):
     """Rows of `table` attached to `lst` that a raw query returns under the given context."""
     phys = TABLES.get(table, table)
+    logical = table
+    for k, v in TABLES.items():
+        if v == table:
+            logical = k
+            break
     list_id = int(getattr(lst, "ref", lst))
     with connection.cursor() as cursor:
         _apply_gucs(cursor, family, principal)
-        cursor.execute(f"SELECT count(*) FROM {phys} WHERE list_id = %s", [list_id])
+        if logical in ("claims", "pledges", "assignments"):
+            cursor.execute(
+                f"SELECT count(*) FROM {phys} t JOIN families_item i ON i.id = t.item_id WHERE i.list_id = %s",
+                [list_id],
+            )
+        else:
+            cursor.execute(f"SELECT count(*) FROM {phys} WHERE list_id = %s", [list_id])
         return cursor.fetchone()[0]
 
 
 def app_role_flags():
-    """Return {'rolsuper': bool, 'rolbypassrls': bool} for the connected role."""
+    """Return {'rolsuper': bool, 'rolbypassrls': bool} for the app role."""
     with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE app_runtime")
         cursor.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
         row = cursor.fetchone()
         return {"rolsuper": row[0], "rolbypassrls": row[1]}
