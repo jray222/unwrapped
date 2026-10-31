@@ -9,7 +9,7 @@ SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = False
 ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if h]
 
-# django-allauth, login views, MFA and the RLS middleware are added in later PRs.
+# django-allauth, login views and MFA are added in later PRs.
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -17,6 +17,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "rest_framework",
     "apps.families",
+    "apps.authz",
 ]
 
 MIDDLEWARE = [
@@ -26,6 +27,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.authz.middleware.RlsContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
