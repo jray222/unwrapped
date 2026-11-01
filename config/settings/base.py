@@ -115,9 +115,11 @@ LOGOUT_REDIRECT_URL = "home"
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = "account_login"
 
 # Static (allauth loads the recovery-pages JS over rather than inlining, which
-# keeps the CSP intact). In prod the files must be served off the app origin
-# through Caddy; see the static-serving TODO.
+# keeps the CSP intact). In prod the files are collected with collectstatic in
+# the image build into STATIC_ROOT and served off the app origin through the
+# static/ URL route (config/urls.py) behind Caddy.
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Default deny for DRF: every API view must declare its own permission.
 REST_FRAMEWORK = {

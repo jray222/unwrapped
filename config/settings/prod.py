@@ -7,6 +7,7 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = False
 
-# Hashed static file names; the manifest must be built by collectstatic in the
-# image build. Without it, allauth MFA template JavaScript URLs break CSP.
+# Hashed static file names; the manifest is built by collectstatic in the
+# image build (see the Dockerfile) so allauth MFA template JavaScript URLs
+# keep the CSP: no bare filenames that could drift out of the manifest.
 STATICFILES_STORAGE = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"

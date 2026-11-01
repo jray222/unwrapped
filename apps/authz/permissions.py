@@ -10,12 +10,29 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect
 
+from apps.authz import db as rls_db
+from apps.families import tokens
 from apps.families.models import (
-    GuestLink,
-    GuestLinkList,
     Membership,
     Person,
 )
+
+
+def _link_person(principal_type, link_id):
+    """Identity of a link principal: active in the DB, and its bound Person.
+
+    Link validity is re-checked through the rls.link_is_active definer and the
+    Person through rls.actor_person_id(): the underlying rows are deliberately
+    not SELECTable by link principals under RLS, so ORM reads would deny here
+    (or, worse, run only against a superuser test connection). Returns None on
+    any failure: Revocation, expiry and a deleted Person all mean "denied".
+    """
+    if not tokens.link_is_active(principal_type, link_id):
+        return None
+    person_id = rls_db.actor_person_id()
+    if not person_id:
+        return None
+    return Person.objects.filter(id=person_id).only("id", "first_name").first()
 
 
 def get_actor_context(request, family_id=None):
@@ -26,23 +43,23 @@ def get_actor_context(request, family_id=None):
     # 1. Anonymous
     if not (user and user.is_authenticated):
         if principal and not principal.is_anonymous:
-            # Guest or assignment link principal from session
+            # Guest or assignment link principal from session; the family only
+            # ever comes from the exchanged link carried in the session.
             if family_id and principal.family_id != family_id:
                 # G1 cross-family access
                 return "cross_family", None, None
 
             if principal.type == "guest":
-                link = GuestLink.objects.filter(id=principal.link_id).first()
-                if not link or not link.is_active():
+                person = _link_person("guest", principal.link_id)
+                if not person:
                     return "denied", None, None
-                return "guest", link.person, principal.family_id
+                return "guest", person, principal.family_id
 
             if principal.type == "assignment_link":
-                from apps.families.models import AssignmentLink
-                link = AssignmentLink.objects.filter(id=principal.link_id).first()
-                if not link or not link.is_active():
+                person = _link_person("assignment_link", principal.link_id)
+                if not person:
                     return "denied", None, None
-                return "assignment_link", link.person, principal.family_id
+                return "assignment_link", person, principal.family_id
 
         return "anonymous", None, None
 
@@ -65,6 +82,14 @@ def get_actor_context(request, family_id=None):
     person = Person.objects.filter(family_id=family_id, user=user).first()
     role = "family_admin" if membership.role == Membership.Role.FAMILY_ADMIN else "member"
     return role, person, family_id
+
+
+def _guest_in_scope(request, list_id):
+    """Guest scope test against the DB (rls.is_guest_allowed_list definer)."""
+    principal = getattr(request, "principal", None)
+    if principal is None or principal.type != "guest":
+        return False
+    return rls_db.guest_allows_list(list_id)
 
 
 def check_authz(rule, request, *, family_id=None, **targets):
@@ -185,10 +210,8 @@ def check_authz(rule, request, *, family_id=None, **targets):
         target_list = targets.get("list")
         if role in ("family_admin", "member"):
             return True, 200
-        if role == "guest" and target_list:
-            principal = getattr(request, "principal", None)
-            if GuestLinkList.objects.filter(guest_link_id=principal.link_id, list_id=target_list.id).exists():
-                return True, 200
+        if role == "guest" and target_list and _guest_in_scope(request, target_list.id):
+            return True, 200
         return False, 403
 
     if rule in ("list.update", "list.delete"):
@@ -205,10 +228,8 @@ def check_authz(rule, request, *, family_id=None, **targets):
         target_item = targets.get("item")
         if role in ("family_admin", "member"):
             return True, 200
-        if role == "guest" and target_item:
-            principal = getattr(request, "principal", None)
-            if GuestLinkList.objects.filter(guest_link_id=principal.link_id, list_id=target_item.list_id).exists():
-                return True, 200
+        if role == "guest" and target_item and _guest_in_scope(request, target_item.list_id):
+            return True, 200
         return False, 403
 
     if rule in ("item.create", "item.update", "item.delete"):
@@ -231,10 +252,8 @@ def check_authz(rule, request, *, family_id=None, **targets):
         if actor_person and actor_person.id == recipient_person_id:
             return False, 404
 
-        if role == "guest":
-            principal = getattr(request, "principal", None)
-            if not GuestLinkList.objects.filter(guest_link_id=principal.link_id, list_id=target_item.list_id).exists():
-                return False, 403
+        if role == "guest" and not _guest_in_scope(request, target_item.list_id):
+            return False, 403
 
         if rule == "claim.view":
             if role in ("family_admin", "member", "guest"):
@@ -264,10 +283,8 @@ def check_authz(rule, request, *, family_id=None, **targets):
         if actor_person and actor_person.id == recipient_person_id:
             return False, 404
 
-        if role == "guest":
-            principal = getattr(request, "principal", None)
-            if not GuestLinkList.objects.filter(guest_link_id=principal.link_id, list_id=target_item.list_id).exists():
-                return False, 403
+        if role == "guest" and not _guest_in_scope(request, target_item.list_id):
+            return False, 403
 
         if rule == "pledge.view":
             if role in ("family_admin", "member", "guest"):

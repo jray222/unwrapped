@@ -79,3 +79,15 @@ urlpatterns = [
     path("welcome", family_views.welcome, name="welcome"),
     path("accounts/", include("allauth.urls")),
 ]
+
+# Static files are served from the manifest-collected STATIC_ROOT (the
+# Dockerfile runs collectstatic at build time) off the app origin, which keeps
+# the CSP intact (allauth MFA pages must not inline their JS). In dev the
+# route is a no-op: runserver serves static through the staticfiles app.
+from django.conf import settings  # noqa: E402
+from django.views.static import serve  # noqa: E402
+
+if settings.STATIC_ROOT:
+    urlpatterns += [
+        path("static/<path:path>", serve, {"document_root": settings.STATIC_ROOT}),
+    ]

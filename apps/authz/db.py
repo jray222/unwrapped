@@ -98,3 +98,72 @@ def audit_append(action, *, target_type="", target_id=None, recipient_person_id=
             "SELECT rls.audit_append(%s, %s, %s, %s, %s::jsonb)",
             [action, target_type, target_id, recipient_person_id, json.dumps(metadata or {})],
         )
+
+
+# ---- 0006 definer helpers -------------------------------------------------------
+#
+# The permission layer must run its identity checks the same way the database
+# does: through definer functions bound to the session GUCs, never through ORM
+# reads of rows an unprivileged principal cannot SELECT. Duplicating those
+# checks in Python with plain queries would either fail closed under RLS (the
+# guest link row) or widen access (fine under a superuser test connection,
+# broken the day anyone runs the real app role).
+
+# Tables rls.family_of_object() knows (apps/families/migrations/0006).
+DEFINER_TABLES = frozenset(
+    {
+        "families_family",
+        "families_membership",
+        "families_person",
+        "families_wishlist",
+        "families_item",
+        "families_claim",
+        "families_pledge",
+        "families_assignment",
+        "families_guestlink",
+        "families_assignmentlink",
+        "families_guestlinklist",
+        "families_invite",
+    }
+)
+
+_FAMILY_OF_OBJECT = "SELECT rls.family_of_object(%s, %s)"
+
+
+def family_of_object(table, object_id):
+    """The tenant family of a row addressed by primary key, via the definer.
+
+    None for unknown tables, unknown ids, or a non-positive id: the caller
+    treats that as 404 and no transaction-wide family context is ever derived
+    from attacker-controlled input.
+    """
+    if table not in DEFINER_TABLES:
+        raise ValueError(f"rls.family_of_object does not know {table!r}")
+    if not (type(object_id) is int and object_id > 0):
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(_FAMILY_OF_OBJECT, [table, object_id])
+        return cursor.fetchone()[0]
+
+
+def guest_allows_list(list_id):
+    """Whether the list is in the current guest principal's scope (definer)."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT rls.is_guest_allowed_list(%s)", [list_id])
+        return bool(cursor.fetchone()[0])
+
+
+def actor_person_id():
+    """The current principal's Person id: own Person (user) or the link's
+    bound Person (guest, assignment_link); None for anonymous or unbound."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT rls.actor_person_id()")
+        return cursor.fetchone()[0]
+
+
+def purge_family(family_id):
+    """Delete a family and all of its tenant rows (0006 definer). True if the
+    family existed."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT rls.purge_family(%s)", [family_id])
+        return bool(cursor.fetchone()[0])

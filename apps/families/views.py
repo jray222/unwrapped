@@ -19,11 +19,13 @@ user must sign out before using an access link (two principals in one session
 would let a member ride a guest's scope, and nobody has a use case).
 """
 
+from decimal import Decimal, InvalidOperation
 import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.http import (
     Http404,
     HttpResponse,
@@ -33,10 +35,19 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.html import escape
 from django.views.decorators.http import require_POST, require_safe
 
+from apps.authz.db import (
+    actor_person_id as rls_actor_person_id,
+    audit_append,
+    family_of_object,
+    purge_family,
+)
 from apps.authz.link_session import save_link_principal
+from apps.authz.middleware import adopt_family
 from apps.authz.permissions import check_authz, get_actor_context
+from apps.authz.ratelimit import ratelimit
 from . import tokens
 from .models import (
     Assignment,
@@ -49,6 +60,7 @@ from .models import (
     Invite,
     Item,
     LINK_MAX_DAYS,
+    LINK_DEFAULT_DAYS,
     Membership,
     Person,
     Pledge,
@@ -58,11 +70,13 @@ from .services import QuantityExhausted, create_assignment, create_claim
 
 
 @require_safe
+@ratelimit("link-exchange")
 def exchange_guest_link(request, token):
     return _exchange(request, tokens.GUEST, token)
 
 
 @require_safe
+@ratelimit("link-exchange")
 def exchange_assignment_link(request, token):
     return _exchange(request, tokens.ASSIGNMENT_LINK, token)
 
@@ -87,6 +101,23 @@ def _authz_error(status):
     if status == 400:
         return HttpResponse("Action rejected", status=400)
     return HttpResponseForbidden("Access denied")
+
+
+def _adopt_object_family(request, table_name, object_id):
+    """Family context for an object URL (/lists/<id>, /items/<id>, ...).
+
+    The URL carries no family segment, so resolve_principal starts a user
+    principal without a family and every tenant policy would deny the very
+    fetch the view needs. The 0006 family_of_object definer resolves trusted
+    server state instead, and adopt_family upgrades the principal. Unknown ids
+    raise Http404 (these URLs never carry tokens, so a 404 page is safe here,
+    unlike the exchange views); access to the row itself stays policy-decided.
+    """
+    family_id = family_of_object(table_name, object_id)
+    if family_id is None:
+        raise Http404()
+    adopt_family(request, family_id)
+    return family_id
 
 
 def _parse_body(request):
@@ -118,32 +149,12 @@ def family_detail(request, family):
         allowed, status = check_authz("family.delete", request, family_id=fam_id)
         if not allowed:
             return _authz_error(status)
-        fam = get_object_or_404(Family, id=fam_id)
+        # Instance admins have no family context, so existence is checked with
+        # the definer, not an ORM read the policies would deny them.
+        if family_of_object(Family._meta.db_table, fam_id) is None:
+            raise Http404()
         with transaction.atomic():
-            from django.db import connection
-            with connection.cursor() as cursor:
-                cursor.execute("SET session_replication_role = replica")
-                for tbl in [
-                    "families_pledge",
-                    "families_assignment",
-                    "families_claim",
-                    "families_claimnotification",
-                    "families_item",
-                    "families_guestlinklist",
-                    "families_guestlink",
-                    "families_assignmentlink",
-                    "families_wishlist",
-                    "families_invite",
-                    "families_auditlog",
-                    "families_person",
-                    "families_membership",
-                    "families_family",
-                ]:
-                    if tbl == "families_family":
-                        cursor.execute(f"DELETE FROM {tbl} WHERE id = %s", [fam_id])
-                    else:
-                        cursor.execute(f"DELETE FROM {tbl} WHERE family_id = %s", [fam_id])
-                cursor.execute("SET session_replication_role = origin")
+            purge_family(fam_id)
         return HttpResponse(status=204)
     return HttpResponseNotAllowed(["DELETE"])
 
@@ -189,12 +200,20 @@ def invite_create(request, family):
         token_hash=tokens.hash_token(raw_token),
         expires_at=timezone.now() + timedelta(days=7),
     )
+    audit_append("invite", target_type="invite", target_id=invite.id)
     return JsonResponse({"id": invite.id, "email": invite.email, "token": raw_token}, status=201)
 
 
 def invite_revoke(request, invite):
     invite_id = int(invite)
-    inv = get_object_or_404(Invite, id=invite_id)
+    fam_id = _adopt_object_family(request, Invite._meta.db_table, invite_id)
+    # invite rows are family-admin readable; a same-family member targeting one
+    # finds the row invisible under RLS, which is a 403 (deny), not a 404.
+    inv = Invite.objects.filter(id=invite_id).first()
+    if inv is None:
+        if request.user.is_authenticated and Membership.objects.filter(family_id=fam_id, user=request.user).exists():
+            return _authz_error(403)
+        raise Http404()
     allowed, status = check_authz("invite.revoke", request, family_id=inv.family_id, invite=inv)
     if not allowed:
         return _authz_error(status)
@@ -202,6 +221,7 @@ def invite_revoke(request, invite):
         return HttpResponseNotAllowed(["POST"])
     inv.revoked_at = timezone.now()
     inv.save(update_fields=["revoked_at"])
+    audit_append("invite", target_type="invite", target_id=inv.id, metadata={"event": "revoke"})
     return JsonResponse({"status": "revoked"})
 
 
@@ -229,11 +249,13 @@ def member_list(request, family):
 
 def member_detail(request, member):
     mem_id = int(member)
+    _adopt_object_family(request, Membership._meta.db_table, mem_id)
     mem = get_object_or_404(Membership, id=mem_id)
     if request.method == "DELETE":
         allowed, status = check_authz("member.remove", request, family_id=mem.family_id, member=mem)
         if not allowed:
             return _authz_error(status)
+        audit_append("role_change", target_type="membership", target_id=mem.id, metadata={"event": "remove"})
         mem.delete()
         return HttpResponse(status=204)
     elif request.method in ("PATCH", "PUT"):
@@ -242,29 +264,33 @@ def member_detail(request, member):
             return _authz_error(status)
         payload = _parse_body(request)
         new_role = payload.get("role")
-        if new_role in ("family_admin", "member"):
-            if mem.role == "family_admin" and new_role == "member":
-                other_admins = (
-                    Membership.objects.filter(family_id=mem.family_id, role="family_admin")
-                    .exclude(id=mem.id)
-                    .count()
-                )
-                if other_admins == 0:
-                    return HttpResponse("Action rejected", status=400)
-            mem.role = new_role
-            mem.save(update_fields=["role"])
+        if not new_role or new_role not in ("family_admin", "member"):
+            return JsonResponse({"error": "role must be family_admin or member"}, status=400)
+        if mem.role == "family_admin" and new_role == "member":
+            other_admins = (
+                Membership.objects.filter(family_id=mem.family_id, role="family_admin")
+                .exclude(id=mem.id)
+                .count()
+            )
+            if other_admins == 0:
+                return HttpResponse("Action rejected", status=400)
+        mem.role = new_role
+        mem.save(update_fields=["role"])
+        audit_append("role_change", target_type="membership", target_id=mem.id, metadata={"role": mem.role})
         return JsonResponse({"id": mem.id, "role": mem.role})
     return HttpResponseNotAllowed(["DELETE", "PATCH"])
 
 
 def member_leave(request, member):
     mem_id = int(member)
+    _adopt_object_family(request, Membership._meta.db_table, mem_id)
     mem = get_object_or_404(Membership, id=mem_id)
     allowed, status = check_authz("member.leave", request, family_id=mem.family_id, member=mem)
     if not allowed:
         return _authz_error(status)
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
+    audit_append("role_change", target_type="membership", target_id=mem.id, metadata={"event": "leave"})
     mem.delete()
     return HttpResponse(status=204)
 
@@ -286,13 +312,24 @@ def guest_link_create(request, family):
     try:
         person_obj = Person.objects.get(id=int(raw_person), family=fam)
     except (ValueError, TypeError, Person.DoesNotExist):
+        # A guest without an account: the Person row is their only identity.
         person_obj = Person.objects.create(family=fam, first_name=str(raw_person))
 
-    days = payload.get("expires_in_days", 30)
+    days = payload.get("expires_in_days", LINK_DEFAULT_DAYS)
     try:
-        days = min(int(days), LINK_MAX_DAYS)
+        days = int(days)
     except (ValueError, TypeError):
-        days = 30
+        days = LINK_DEFAULT_DAYS
+    days = max(1, min(days, LINK_MAX_DAYS))
+
+    # The scope is validated before any credential exists: a bad list id must
+    # not leave behind an active link (and person) it was minted for.
+    scoped_lists = []
+    for lid in payload.get("lists", []):
+        try:
+            scoped_lists.append(WishList.objects.get(id=int(lid), family=fam))
+        except (ValueError, TypeError, WishList.DoesNotExist):
+            return _authz_error(404)
 
     raw_token = tokens.new_token()
     link = GuestLink.objects.create(
@@ -302,14 +339,9 @@ def guest_link_create(request, family):
         token_hash=tokens.hash_token(raw_token),
         expires_at=timezone.now() + timedelta(days=days),
     )
-
-    list_ids = payload.get("lists", [])
-    for lid in list_ids:
-        try:
-            target_l = WishList.objects.get(id=int(lid), family=fam)
-            GuestLinkList.objects.create(family=fam, guest_link=link, list=target_l)
-        except (ValueError, TypeError, WishList.DoesNotExist):
-            return _authz_error(404)
+    for target_l in scoped_lists:
+        GuestLinkList.objects.create(family=fam, guest_link=link, list=target_l)
+    audit_append("link_issue", target_type="guest_link", target_id=link.id)
 
     return JsonResponse(
         {"id": link.id, "token": raw_token, "expires_in_days": days},
@@ -319,7 +351,14 @@ def guest_link_create(request, family):
 
 def guest_link_revoke(request, guest_link):
     link_id = int(guest_link)
-    link = get_object_or_404(GuestLink, id=link_id)
+    fam_id = _adopt_object_family(request, GuestLink._meta.db_table, link_id)
+    # Members only see the guest links they issued under RLS, so a family
+    # member targeting someone else's link is a same-family deny (403).
+    link = GuestLink.objects.filter(id=link_id).first()
+    if link is None:
+        if request.user.is_authenticated and Membership.objects.filter(family_id=fam_id, user=request.user).exists():
+            return _authz_error(403)
+        raise Http404()
     allowed, status = check_authz("guest_link.revoke", request, family_id=link.family_id, guest_link=link)
     if not allowed:
         return _authz_error(status)
@@ -327,6 +366,7 @@ def guest_link_revoke(request, guest_link):
         return HttpResponseNotAllowed(["POST"])
     link.revoked_at = timezone.now()
     link.save(update_fields=["revoked_at"])
+    audit_append("link_revoke", target_type="guest_link", target_id=link.id)
     return JsonResponse({"status": "revoked"})
 
 
@@ -353,6 +393,7 @@ def list_create(request, family):
 
 def list_detail(request, list):
     list_id = int(list)
+    _adopt_object_family(request, WishList._meta.db_table, list_id)
     lst = get_object_or_404(WishList, id=list_id)
     if request.method == "GET":
         allowed, status = check_authz("list.view", request, family_id=lst.family_id, list=lst)
@@ -365,29 +406,27 @@ def list_detail(request, list):
             p = Person.objects.filter(user=user, family_id=lst.family_id).first()
             actor_person_id = p.id if p else None
         else:
-            principal = getattr(request, "principal", None)
-            if principal is not None and getattr(principal, "type", None) == "guest":
-                from apps.families.models import GuestLink
-                link = GuestLink.objects.filter(id=principal.link_id).first()
-                actor_person_id = link.person_id if link else None
-            elif principal is not None and getattr(principal, "type", None) == "assignment_link":
-                from apps.families.models import AssignmentLink
-                link = AssignmentLink.objects.filter(id=principal.link_id).first()
-                actor_person_id = link.person_id if link else None
+            # Link principals: the bound Person comes from the definer (the
+            # link rows themselves are not readable by link principals).
+            if getattr(request, "principal", None) is not None and not request.principal.is_anonymous:
+                if request.principal.type in ("guest", "assignment_link"):
+                    actor_person_id = rls_actor_person_id()
 
         is_recipient = actor_person_id is not None and actor_person_id == lst.recipient_id
 
-        parts = [f"<h1>{lst.title}</h1>"]
+        # All rendered values are HTML-escaped, and the store link is only
+        # rendered for an http(s) URL: CSP is not a sanitizer.
+        parts = [f"<h1>{escape(lst.title)}</h1>"]
         for it in Item.objects.filter(list=lst):
             taken = ""
             if not is_recipient:
                 claim = Claim.objects.filter(item=it).select_related("claimer").first()
                 if claim:
-                    taken = f"Taken by {claim.claimer.first_name}"
+                    taken = f"Taken by {escape(claim.claimer.first_name)}"
             anchor = ""
-            if it.store_url:
-                anchor = f'<a href="{it.store_url}" rel="noopener noreferrer">store</a>'
-            parts.append(f"<div>{it.name} {taken} {anchor}</div>")
+            if it.store_url and it.store_url.lower().startswith(("http://", "https://")):
+                anchor = f'<a href="{escape(it.store_url)}" rel="noopener noreferrer">store</a>'
+            parts.append(f"<div>{escape(it.name)} {taken} {anchor}</div>")
         html = "\n".join(parts)
         return HttpResponse(html, content_type="text/html")
     elif request.method in ("PATCH", "PUT"):
@@ -410,6 +449,7 @@ def list_detail(request, list):
 
 def item_create(request, list):
     list_id = int(list)
+    _adopt_object_family(request, WishList._meta.db_table, list_id)
     lst = get_object_or_404(WishList, id=list_id)
     allowed, status = check_authz("item.create", request, family_id=lst.family_id, list=lst)
     if not allowed:
@@ -424,7 +464,7 @@ def item_create(request, list):
     try:
         quantity = max(1, int(quantity))
     except (ValueError, TypeError):
-        quantity = 1
+        return JsonResponse({"error": "quantity must be a positive integer"}, status=400)
     item = Item.objects.create(
         family=lst.family,
         list=lst,
@@ -440,6 +480,7 @@ def item_create(request, list):
 
 def item_detail(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     if request.method == "GET":
         allowed, status = check_authz("item.view", request, family_id=target_item.family_id, item=target_item)
@@ -462,10 +503,12 @@ def item_detail(request, item):
         if "name" in payload:
             target_item.name = payload["name"]
         if "quantity" in payload:
+            # Bad input is rejected, not silently ignored: a silent no-op with
+            # a 200 would tell the client the edit landed.
             try:
                 target_item.quantity = max(1, int(payload["quantity"]))
             except (ValueError, TypeError):
-                pass
+                return JsonResponse({"error": "quantity must be a positive integer"}, status=400)
         if "notes" in payload:
             target_item.notes = payload["notes"]
         if "store_name" in payload:
@@ -487,6 +530,7 @@ def item_detail(request, item):
 
 def claim_list(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     allowed, status = check_authz("claim.view", request, family_id=target_item.family_id, item=target_item)
     if not allowed:
@@ -503,6 +547,7 @@ def claim_list(request, item):
 
 def claim_create(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     allowed, status = check_authz("claim.create", request, family_id=target_item.family_id, item=target_item)
     if not allowed:
@@ -516,25 +561,35 @@ def claim_create(request, item):
         claim = create_claim(item=target_item, claimer=actor_person)
     except QuantityExhausted:
         return HttpResponse("Quantity exhausted", status=400)
-    except Exception:
+    except (ValidationError, IntegrityError):
+        # Expected-capacity and uniqueness rejections only: anything else is a
+        # server bug and propagates.
         return HttpResponse("Action rejected", status=400)
+    audit_append(
+        "claim", target_type="item", target_id=target_item.id,
+        recipient_person_id=target_item.list.recipient_id,
+    )
     return JsonResponse({"id": claim.id, "claimer": actor_person.first_name}, status=201)
 
 
 def claim_release(request, claim):
     claim_id = int(claim)
+    _adopt_object_family(request, Claim._meta.db_table, claim_id)
     target_claim = get_object_or_404(Claim.objects.select_related("item__list"), id=claim_id)
     allowed, status = check_authz("claim.release", request, family_id=target_claim.family_id, claim=target_claim)
     if not allowed:
         return _authz_error(status)
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
+    claimer_id, item = target_claim.claimer_id, target_claim.item
     target_claim.delete()
+    audit_append("release", target_type="item", target_id=item.id, recipient_person_id=item.list.recipient_id)
     return HttpResponse(status=204)
 
 
 def pledge_list(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     allowed, status = check_authz("pledge.view", request, family_id=target_item.family_id, item=target_item)
     if not allowed:
@@ -551,6 +606,7 @@ def pledge_list(request, item):
 
 def pledge_create(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     allowed, status = check_authz("pledge.create", request, family_id=target_item.family_id, item=target_item)
     if not allowed:
@@ -561,13 +617,21 @@ def pledge_create(request, item):
     if not actor_person:
         return _authz_error(403)
     payload = _parse_body(request)
-    amount = payload.get("amount", 10)
+    try:
+        amount = Decimal(str(payload.get("amount", 10)))
+    except InvalidOperation:
+        return JsonResponse({"error": "amount must be a number"}, status=400)
+    if amount < 0:
+        return JsonResponse({"error": "amount must not be negative"}, status=400)
     pledge = Pledge.objects.create(family=target_item.family, item=target_item, pledger=actor_person, amount=amount)
+    audit_append("pledge", target_type="item", target_id=target_item.id,
+                 recipient_person_id=target_item.list.recipient_id)
     return JsonResponse({"id": pledge.id, "amount": str(pledge.amount), "pledger": actor_person.first_name}, status=201)
 
 
 def pledge_detail(request, pledge):
     pledge_id = int(pledge)
+    _adopt_object_family(request, Pledge._meta.db_table, pledge_id)
     target_pledge = get_object_or_404(Pledge.objects.select_related("item__list"), id=pledge_id)
     if request.method in ("PATCH", "PUT"):
         allowed, status = check_authz("pledge.update", request, family_id=target_pledge.family_id, pledge=target_pledge)
@@ -575,7 +639,13 @@ def pledge_detail(request, pledge):
             return _authz_error(status)
         payload = _parse_body(request)
         if "amount" in payload:
-            target_pledge.amount = payload["amount"]
+            try:
+                amount = Decimal(str(payload["amount"]))
+            except InvalidOperation:
+                return JsonResponse({"error": "amount must be a number"}, status=400)
+            if amount < 0:
+                return JsonResponse({"error": "amount must not be negative"}, status=400)
+            target_pledge.amount = amount
             target_pledge.save(update_fields=["amount"])
         return JsonResponse({"id": target_pledge.id, "amount": str(target_pledge.amount)})
     return HttpResponseNotAllowed(["PATCH", "PUT"])
@@ -583,6 +653,7 @@ def pledge_detail(request, pledge):
 
 def assignment_create(request, item):
     item_id = int(item)
+    _adopt_object_family(request, Item._meta.db_table, item_id)
     target_item = get_object_or_404(Item.objects.select_related("list"), id=item_id)
     payload = _parse_body(request)
     raw_assignee = payload.get("assignee")
@@ -613,8 +684,10 @@ def assignment_create(request, item):
         )
     except QuantityExhausted:
         return HttpResponse("Quantity exhausted", status=400)
-    except Exception:
+    except (ValidationError, IntegrityError):
         return HttpResponse("Action rejected", status=400)
+    audit_append("assign", target_type="assignment", target_id=assignment.id,
+                 recipient_person_id=target_item.list.recipient_id)
 
     return JsonResponse(
         {"id": assignment.id, "assignee": assignee_person.first_name, "status": assignment.status},
@@ -624,6 +697,10 @@ def assignment_create(request, item):
 
 def assignment_detail(request, assignment):
     assign_id = int(assignment)
+    # Hidden assignment rows stay 404 for everyone: the surprise rule forbids
+    # the recipient learning that their list has (or has no) assignees via a
+    # status-code difference, and no other same-family member needs a 403 here.
+    _adopt_object_family(request, Assignment._meta.db_table, assign_id)
     target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
     allowed, status = check_authz("assignment.view", request, family_id=target.family_id, assignment=target)
     if not allowed:
@@ -641,6 +718,7 @@ def assignment_detail(request, assignment):
 
 def assignment_mark_bought(request, assignment):
     assign_id = int(assignment)
+    _adopt_object_family(request, Assignment._meta.db_table, assign_id)
     target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
     allowed, status = check_authz("assignment.mark_bought", request, family_id=target.family_id, assignment=target)
     if not allowed:
@@ -649,11 +727,14 @@ def assignment_mark_bought(request, assignment):
         return HttpResponseNotAllowed(["POST"])
     target.status = Assignment.Status.BOUGHT
     target.save(update_fields=["status"])
+    audit_append("assign", target_type="assignment", target_id=target.id,
+                 recipient_person_id=target.item.list.recipient_id, metadata={"event": "bought"})
     return JsonResponse({"id": target.id, "status": target.status})
 
 
 def assignment_mark_couldnt_get(request, assignment):
     assign_id = int(assignment)
+    _adopt_object_family(request, Assignment._meta.db_table, assign_id)
     target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
     allowed, status = check_authz("assignment.mark_couldnt_get", request, family_id=target.family_id, assignment=target)
     if not allowed:
@@ -662,11 +743,14 @@ def assignment_mark_couldnt_get(request, assignment):
         return HttpResponseNotAllowed(["POST"])
     target.status = Assignment.Status.COULDNT_GET
     target.save(update_fields=["status"])
+    audit_append("assign", target_type="assignment", target_id=target.id,
+                 recipient_person_id=target.item.list.recipient_id, metadata={"event": "couldnt_get"})
     return JsonResponse({"id": target.id, "status": target.status})
 
 
 def assignment_cancel(request, assignment):
     assign_id = int(assignment)
+    _adopt_object_family(request, Assignment._meta.db_table, assign_id)
     target = get_object_or_404(Assignment.objects.select_related("item__list"), id=assign_id)
     allowed, status = check_authz("assignment.cancel", request, family_id=target.family_id, assignment=target)
     if not allowed:
@@ -674,11 +758,14 @@ def assignment_cancel(request, assignment):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     target.delete()
+    audit_append("release", target_type="assignment", target_id=assign_id,
+                 recipient_person_id=target.item.list.recipient_id, metadata={"event": "cancel"})
     return HttpResponse(status=204)
 
 
 def assignment_share_card(request, assignment):
     assign_id = int(assignment)
+    _adopt_object_family(request, Assignment._meta.db_table, assign_id)
     target = get_object_or_404(Assignment.objects.select_related("item__list", "assignee"), id=assign_id)
     allowed, status = check_authz("assignment.share_card", request, family_id=target.family_id, assignment=target)
     if not allowed:
@@ -729,6 +816,7 @@ def welcome(request):
 
 
 @require_POST
+@ratelimit("invite-accept")
 def invite_accept(request):
     """Accept an invite to join a family (single use, anonymous only)."""
     principal = getattr(request, "principal", None)

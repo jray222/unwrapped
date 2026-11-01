@@ -12,6 +12,7 @@ from .validators import MaxLifetime, validate_http_url, validate_no_tokens, vali
 User = settings.AUTH_USER_MODEL
 
 LINK_MAX_DAYS = 365
+LINK_DEFAULT_DAYS = 30
 INVITE_MAX_DAYS = 7
 
 

@@ -31,7 +31,8 @@ The binding security contract is codified in **`CLAUDE.md`** and **`docs/authz-m
 | **PR-C.1** (Auth Scaffold) | `feature/auth-scaffold` | `2c8dc52` | `django-allauth` (email login, signup closed via `AccountAdapter.is_open_for_signup = False`), invariant I4 MFA gate middleware (`apps/authz/mfa_gate.py`). |
 | **PR-C.2** (Token Exchange) | `feature/token-exchange` | `bd84a0c` | Migration `0004_token_exchange.py` (`rls.exchange_link_token`, `rls.link_is_active`), session rotation (`cycle_key`), guest/assignment link exchange views, `TokenSanitizingFilter`. |
 | **PR-C.3** (Invite Accept) | `feature/token-exchange` | `940b55f` | Migration `0005_invite_accept.py` (`rls.accept_invite`), single-use tracking, person binding, atomic user creation. |
-| **PR-D Slices 1–6** | `feature/authz-permissions` | (active) | Authz test harness (5,651 test cases from `docs/authz-matrix.yaml`), permission layer (`apps/authz/permissions.py`), endpoints for family, members, invites, guest links, lists, items, claims, and pledges. |
+| **PR-D Slices 1–10** | `feature/authz-permissions` | `ef394ef` | Authz test harness (820+ test cases), permission layer, endpoints for family, members, invites, guest links, lists, items, claims, pledges, assignments, audit log, invariants. |
+| **PR-E** (RLS plumbing, prod hardening) | `main` | (in progress) | Migration `0006_object_family.py` (`rls.family_of_object`, `rls.is_guest_allowed_list`, `rls.purge_family`, corrected `rls.audit_append` guard), `resolve_principal` URL-kwarg fix, definer-based guest identity, audit wiring, rate limiter, static files. |
 
 ---
 
@@ -64,7 +65,7 @@ Runs as the superuser role (`postgres`, password `postgres-local-dev`) which clo
 PYTHONDONTWRITEBYTECODE=1 DB_NAME=unwrapped DB_USER=postgres DB_PASSWORD=postgres-local-dev DB_HOST=127.0.0.1 \
   /tmp/opencode/venv/bin/python -m pytest tests/domain tests/auth tests/exchange tests/test_security_headers.py tests/authz/test_instance.py tests/authz/test_membership.py tests/authz/test_links.py tests/authz/test_lists.py tests/authz/test_items.py -q -p no:cacheprovider
 ```
-*Current status: 271 passed.*
+*Current status: 745 passed (non-RLS) / 87 passed (RLS).*
 
 ### RLS Suite (Policy and Catalog Verification)
 Runs against the dedicated `rls_test` database as `rls_test_app`:
@@ -72,7 +73,7 @@ Runs against the dedicated `rls_test` database as `rls_test_app`:
 ```bash
 su postgres -c "RLS_TEST_APP=rls_test_app RLS_TEST_OWNER=rls_test_owner RLS_TEST_ADMIN_DSN='dbname=rls_test' RLS_TESTS_REQUIRED=1 DB_NAME=rls_test DB_USER=rls_test_app DB_PASSWORD=rls-test-app-pw DB_HOST=127.0.0.1 DB_PORT=5432 /tmp/opencode/venv/bin/python -m pytest tests/rls -q -p no:cacheprovider"
 ```
-*Current status: 76 passed.*
+*Current status: 87 passed.*
 
 ### Rebuilding the Test Template
 If any schema or `db/init/` changes occur:

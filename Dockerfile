@@ -16,6 +16,13 @@ RUN pip install -r requirements.txt
 COPY . .
 RUN chown -R root:root /app && chmod -R go-w,a+rX /app
 
+# Static manifest comes out of the image build (read-only root FS at runtime).
+# Dummy build-time-only settings satisfy the env-required settings module.
+RUN DJANGO_SETTINGS_MODULE=config.settings.prod \
+    DJANGO_SECRET_KEY=build-time-only \
+    DB_NAME=unused DB_USER=unused DB_PASSWORD=unused DB_HOST=unused \
+    python manage.py collectstatic --noinput
+
 USER 10001:10001
 EXPOSE 8000
 

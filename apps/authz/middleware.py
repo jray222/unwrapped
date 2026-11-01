@@ -34,10 +34,11 @@ def resolve_principal(request, view_kwargs):
     Two principal shapes exist:
 
     - An authenticated, active Django user (type 'user'), with the family taken
-      from a URL `family_id` kwarg (always an <int:family_id> converter). RLS,
-      not this code, decides whether that user belongs to that family: a
-      non-member gets zero rows. The family role is deliberately never passed
-      to the database.
+      from the URL's family segment (the URLconf spells it <int:family>;
+      adopt_family() upgrades it later for object URLs that carry no family
+      segment). RLS, not this code, decides whether that user belongs to that
+      family: a non-member gets zero rows. The family role is deliberately
+      never passed to the database.
     - A guest or assignment-link principal from the session, exchanged once
       from a raw URL token (apps/authz/link_session.py). The family comes ONLY
       from the exchanged link, never from the URL: link URLs carry no family
@@ -59,6 +60,9 @@ def resolve_principal(request, view_kwargs):
     if user.is_authenticated and user.is_active:
         drop_link_principal(request)  # an authenticated principal outranks any link
         family_id = view_kwargs.get("family_id")
+        if family_id is None:
+            # <int:family> is the family segment the URLconf uses everywhere.
+            family_id = view_kwargs.get("family")
         if family_id is not None and not (type(family_id) is int and family_id > 0):
             return ANONYMOUS
         apply_rls_settings(family_id, "user", user.pk)
@@ -82,6 +86,31 @@ def resolve_principal(request, view_kwargs):
     # family_id in view_kwargs is deliberately ignored for link principals: the
     # link row (and below it, the policies) is the authority for the family.
     return Principal(type=kind, family_id=family_id, link_id=link_id)
+
+
+def adopt_family(request, family_id):
+    """Upgrade an authenticated user principal's family to a URL-independent one.
+
+    Object URLs (/lists/<id>, /items/<id>, ...) carry no family segment, so
+    resolve_principal initially runs the user with no family context: every
+    tenant policy would deny and the object could not even be fetched. Views
+    call this once they have resolved the object's family through the
+    rls.family_of_object definer (trusted server state, never a client claim).
+    The policies still decide everything: a non-member of that family keeps
+    zero rows, and a cross-family member's response fails closed.
+
+    Link principals keep their family (already authenticated by the owning
+    link), and anonymous principals never adopt anything.
+    """
+    principal = getattr(request, "principal", None)
+    if principal is None or principal.type != "user":
+        return
+    if not (type(family_id) is int and family_id > 0):
+        return
+    if principal.family_id == family_id:
+        return
+    apply_rls_settings(family_id, "user", principal.user_id)
+    request.principal = Principal(type="user", user_id=principal.user_id, family_id=family_id)
 
 
 class RlsContextMiddleware:

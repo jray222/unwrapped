@@ -17,28 +17,28 @@ RLS_TABLES = sorted(
 )
 
 EXPECTED_POLICIES = {
-    "families_family": {"family_select", "family_insert", "family_update"},
+    "families_family": {"family_select", "family_insert", "family_update", "rls_definer_read", "rls_definer_del"},
     "families_membership": {
         "membership_select", "membership_update", "membership_delete", "rls_definer_read",
-        "rls_definer_ins", "rls_definer_upd",
+        "rls_definer_ins", "rls_definer_upd", "rls_definer_del", "rls_definer_del",
     },
     "families_person": {
         "person_select", "person_insert", "person_update", "person_delete", "rls_definer_read",
-        "rls_definer_ins", "rls_definer_upd",
+        "rls_definer_ins", "rls_definer_upd", "rls_definer_del",
     },
-    "families_wishlist": {"wishlist_select", "wishlist_insert", "wishlist_update", "wishlist_delete", "rls_definer_read"},
-    "families_item": {"item_select", "item_insert", "item_update", "item_delete", "rls_definer_read"},
+    "families_wishlist": {"wishlist_select", "wishlist_insert", "wishlist_update", "wishlist_delete", "rls_definer_read", "rls_definer_del"},
+    "families_item": {"item_select", "item_insert", "item_update", "item_delete", "rls_definer_read", "rls_definer_del"},
     "families_claim": {"claim_select", "claim_insert", "claim_delete", "rls_definer_read", "rls_definer_del"},
-    "families_pledge": {"pledge_select", "pledge_insert", "pledge_update", "pledge_delete", "rls_definer_read"},
+    "families_pledge": {"pledge_select", "pledge_insert", "pledge_update", "pledge_delete", "rls_definer_read", "rls_definer_del"},
     "families_assignment": {
-        "assignment_select", "assignment_insert", "assignment_update", "assignment_delete", "rls_definer_read",
+        "assignment_select", "assignment_insert", "assignment_update", "assignment_delete", "rls_definer_read", "rls_definer_del",
     },
-    "families_guestlink": {"guestlink_select", "guestlink_insert", "guestlink_update", "rls_definer_read"},
-    "families_guestlinklist": {"gll_select", "gll_insert", "gll_delete", "rls_definer_read"},
-    "families_assignmentlink": {"alink_select", "alink_insert", "alink_update", "rls_definer_read"},
-    "families_invite": {"invite_select", "invite_insert", "invite_update", "rls_definer_read", "rls_definer_upd"},
-    "families_auditlog": {"auditlog_select", "rls_definer_ins"},
-    "families_claimnotification": {"rls_definer_ins"},
+    "families_guestlink": {"guestlink_select", "guestlink_insert", "guestlink_update", "rls_definer_read", "rls_definer_del"},
+    "families_guestlinklist": {"gll_select", "gll_insert", "gll_delete", "rls_definer_read", "rls_definer_del"},
+    "families_assignmentlink": {"alink_select", "alink_insert", "alink_update", "rls_definer_read", "rls_definer_del"},
+    "families_invite": {"invite_select", "invite_insert", "invite_update", "rls_definer_read", "rls_definer_upd", "rls_definer_del"},
+    "families_auditlog": {"auditlog_select", "rls_definer_ins", "rls_definer_read", "rls_definer_del"},
+    "families_claimnotification": {"rls_definer_ins", "rls_definer_read", "rls_definer_del"},
 }
 for _table, _names in EXPECTED_POLICIES.items():
     if _table != "families_family":
