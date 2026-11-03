@@ -10,7 +10,7 @@ import {
 import instanceAdminRouter from './routes/instance-admin.js';
 import authRouter from './routes/auth.js';
 import familyAdminRouter from './routes/family-admin.js';
-import listsItemsRouter from './routes/lists-items.js';
+import listsItemsRouter from './routes/lists-items/index.js';
 import giftsRouter from './routes/gifts.js';
 import linksRouter from './routes/links.js';
 
