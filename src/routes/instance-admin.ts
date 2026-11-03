@@ -81,7 +81,9 @@ router.get('/families', async (_req: AuthenticatedRequest, res, next) => {
  */
 router.post('/families', async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { name, slug, adminEmail } = req.body || {};
+    const name = req.body?.name;
+    const slug = req.body?.slug;
+    const adminEmail = req.body?.adminEmail ?? req.body?.admin_email;
     if (!name || typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ error: 'Family name is required' });
       return;

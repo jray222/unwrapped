@@ -110,10 +110,23 @@ export const autofillRateLimiter = createRateLimiter({
   max: 15,
 });
 
+export function isRequestSecure(res: Response): boolean {
+  const req = res.req;
+  if (!req) return config.isProd;
+  const proto = String(req.headers?.['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  if (proto === 'https') return true;
+  if (proto === 'http') return false;
+  if (typeof req.secure === 'boolean' && req.secure) return true;
+  return false;
+}
+
 export function setSessionCookie(res: Response, rawToken: string, maxAgeMs: number): void {
   res.cookie(SESSION_COOKIE_NAME, rawToken, {
     httpOnly: true,
-    secure: config.isProd,
+    secure: isRequestSecure(res),
     sameSite: 'lax',
     path: '/',
     maxAge: maxAgeMs,
@@ -123,7 +136,7 @@ export function setSessionCookie(res: Response, rawToken: string, maxAgeMs: numb
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
-    secure: config.isProd,
+    secure: isRequestSecure(res),
     sameSite: 'lax',
     path: '/',
   });

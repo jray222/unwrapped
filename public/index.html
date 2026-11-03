@@ -714,6 +714,44 @@
       </div>
     </div>
 
+    <!-- Modal 8: Two-Factor Authentication (TOTP) Setup Modal -->
+    <div id="modal-totp-enrollment" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-totp-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-totp-title">🔐 Set Up Two-Factor Authentication</h3>
+          <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
+        </div>
+        <div id="totp-setup-step-1">
+          <p>Scan this QR code with your authenticator app (Google Authenticator, Apple Passwords, 1Password), or enter the secret key manually.</p>
+          <div style="text-align: center; margin: 1rem 0;">
+            <img id="totp-qr-img" alt="TOTP QR Code" style="max-width: 200px; height: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: inline-block;">
+          </div>
+          <div class="form-group">
+            <label for="totp-secret-text">Secret Key (Manual Entry)</label>
+            <input type="text" id="totp-secret-text" readonly style="font-family: monospace; font-size: 1rem; text-align: center;" onclick="this.select()">
+          </div>
+          <form id="form-totp-enable">
+            <div class="form-group">
+              <label for="totp-verify-code">Enter 6-Digit Verification Code</label>
+              <input type="text" id="totp-verify-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="123456" required>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
+              <button type="submit" class="btn btn-primary">Enable 2FA</button>
+            </div>
+          </form>
+        </div>
+        <div id="totp-setup-step-2" style="display: none;">
+          <h4 style="color: var(--pine-800);">🎉 Two-Factor Authentication Enabled!</h4>
+          <p>Save these <strong>8 single-use recovery codes</strong> in a safe place. If you ever lose access to your authenticator app, you can use any of these to sign in.</p>
+          <div id="totp-recovery-codes-box" style="background: var(--bg-cream); padding: 1rem; border-radius: var(--radius-sm); font-family: monospace; font-weight: 700; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 1rem 0; border: 1px solid var(--gold-400);"></div>
+          <div class="modal-actions">
+            <button type="button" id="btn-totp-complete" class="btn btn-festive btn-full">I Saved My Recovery Codes — Continue to Family</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Main JavaScript Bundle (CSP compliant, no inline scripts) -->

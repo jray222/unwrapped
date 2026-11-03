@@ -136,9 +136,12 @@ router.get('/invite-info/:token', async (req, res, next) => {
  * Accepts inviteToken, firstName, lastName, password.
  * Creates local account and family membership, issuing a pre-MFA session.
  */
-router.post('/register-from-invite', authRateLimiter, async (req, res, next) => {
+router.post(['/register-from-invite', '/accept-invite'], authRateLimiter, async (req, res, next) => {
   try {
-    const { inviteToken, firstName, lastName, password } = req.body || {};
+    const inviteToken = req.body?.inviteToken ?? req.body?.invite_token;
+    const firstName = req.body?.firstName ?? req.body?.first_name;
+    const lastName = req.body?.lastName ?? req.body?.last_name;
+    const password = req.body?.password;
     if (!inviteToken || !firstName || !password) {
       res.status(400).json({ error: 'Missing required fields' });
       return;
@@ -256,13 +259,188 @@ router.post('/register-from-invite', authRateLimiter, async (req, res, next) => 
 });
 
 /**
+ * GET /api/auth/google
+ * Initiates Google OAuth 2.0 / OIDC redirect flow.
+ */
+router.get('/google', authRateLimiter, (req, res) => {
+  if (!config.googleClientId || config.googleClientId === 'mock-google-client-id') {
+    res.redirect(303, '/?error=google_not_configured');
+    return;
+  }
+  const stateToken = generateToken(24);
+  res.cookie('unwrapped_oauth_state', stateToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 10 * 60 * 1000,
+  });
+  const redirectUri = `${config.origin.replace(/\/$/, '')}/api/auth/google/callback`;
+  const params = new URLSearchParams({
+    client_id: config.googleClientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state: stateToken,
+    prompt: 'select_account',
+  });
+  res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Completes Google OAuth 2.0 code exchange and signs in or accepts pending invite.
+ */
+router.get('/google/callback', authRateLimiter, async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    const cookieState = req.cookies?.unwrapped_oauth_state;
+    res.clearCookie('unwrapped_oauth_state', { path: '/' });
+
+    if (!code || typeof code !== 'string' || !state || state !== cookieState) {
+      res.redirect(303, '/?error=google_oauth_state_mismatch');
+      return;
+    }
+
+    const redirectUri = `${config.origin.replace(/\/$/, '')}/api/auth/google/callback`;
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: config.googleClientId,
+        client_secret: config.googleClientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }).toString(),
+    });
+
+    if (!tokenRes.ok) {
+      res.redirect(303, '/?error=google_token_exchange_failed');
+      return;
+    }
+
+    const tokenData: any = await tokenRes.json();
+    const userRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    if (!userRes.ok) {
+      res.redirect(303, '/?error=google_userinfo_failed');
+      return;
+    }
+
+    const profile: any = await userRes.json();
+    if (profile.email_verified !== true || !profile.email || !profile.sub) {
+      res.redirect(303, '/?error=google_email_unverified');
+      return;
+    }
+
+    const pendingInviteToken = req.cookies?.unwrapped_pending_invite || null;
+    const normalizedEmail = String(profile.email).toLowerCase().trim();
+    const trimmedFirst = String(profile.given_name || profile.name || 'Member').trim();
+    const trimmedLast = String(profile.family_name || '').trim();
+
+    const sessionResult = await withSystemContext(async (client) => {
+      let userId: string;
+      if (pendingInviteToken) {
+        const inviteTokenHash = hashToken(pendingInviteToken);
+        const inviteRes = await client.query(
+          `SELECT id, family_id, email, role FROM invites
+           WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()`,
+          [inviteTokenHash]
+        );
+        if (inviteRes.rows.length === 0) {
+          throw { status: 400, code: 'invalid_invite' };
+        }
+        const invite = inviteRes.rows[0];
+        if (invite.email.toLowerCase().trim() !== normalizedEmail) {
+          throw { status: 403, code: 'invite_email_mismatch' };
+        }
+
+        const existingUser = await client.query(`SELECT id FROM users WHERE email = $1`, [
+          normalizedEmail,
+        ]);
+        if (existingUser.rows.length > 0) {
+          userId = existingUser.rows[0].id;
+          await client.query(`UPDATE users SET google_sub = $1 WHERE id = $2`, [
+            profile.sub,
+            userId,
+          ]);
+        } else {
+          userId = randomUUID();
+          await client.query(
+            `INSERT INTO users (id, email, first_name, last_name, google_sub, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [userId, normalizedEmail, trimmedFirst, trimmedLast, profile.sub]
+          );
+        }
+
+        await client.query(
+          `INSERT INTO family_members (id, family_id, user_id, role, created_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (family_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+          [randomUUID(), invite.family_id, userId, invite.role]
+        );
+        await client.query(`UPDATE invites SET used_at = NOW() WHERE id = $1`, [invite.id]);
+      } else {
+        const existingUser = await client.query(
+          `SELECT id, google_sub FROM users WHERE google_sub = $1 OR email = $2`,
+          [profile.sub, normalizedEmail]
+        );
+        if (existingUser.rows.length === 0) {
+          throw { status: 403, code: 'invite_required' };
+        }
+        userId = existingUser.rows[0].id;
+        if (!existingUser.rows[0].google_sub) {
+          await client.query(`UPDATE users SET google_sub = $1 WHERE id = $2`, [
+            profile.sub,
+            userId,
+          ]);
+        }
+      }
+
+      const rawSessionToken = generateToken(32);
+      const csrfToken = generateToken(32);
+      const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+      await client.query(
+        `INSERT INTO sessions (id, token_hash, csrf_token, kind, user_id, mfa_verified, expires_at, created_at)
+         VALUES ($1, $2, $3, 'user', $4, TRUE, $5, NOW())`,
+        [
+          randomUUID(),
+          hashToken(rawSessionToken),
+          csrfToken,
+          userId,
+          new Date(Date.now() + maxAgeMs),
+        ]
+      );
+      return { rawSessionToken, maxAgeMs };
+    });
+
+    setSessionCookie(res, sessionResult.rawSessionToken, sessionResult.maxAgeMs);
+    res.clearCookie('unwrapped_pending_invite', { path: '/' });
+    res.redirect(303, '/');
+  } catch (err: any) {
+    if (err?.code) {
+      res.redirect(303, `/?error=${encodeURIComponent(err.code)}`);
+      return;
+    }
+    next(err);
+  }
+});
+
+/**
  * POST /api/auth/google
  * Handles Google OIDC / ID Token verification.
  * Pre-verifies email and attaches to invite or existing account.
  */
 router.post('/google', authRateLimiter, async (req, res, next) => {
   try {
-    const { inviteToken, email, emailVerified, googleSub, firstName, lastName } = req.body || {};
+    const inviteToken = req.body?.inviteToken ?? req.body?.invite_token;
+    const email = req.body?.email;
+    const emailVerified = req.body?.emailVerified ?? req.body?.email_verified;
+    const googleSub = req.body?.googleSub ?? req.body?.google_sub;
+    const firstName = req.body?.firstName ?? req.body?.first_name;
+    const lastName = req.body?.lastName ?? req.body?.last_name;
 
     if (emailVerified !== true) {
       res.status(403).json({ error: 'Email must be verified by Google' });
@@ -518,7 +696,8 @@ router.post('/mfa/totp/setup', async (req: AuthenticatedRequest, res, next) => {
  */
 router.post('/mfa/totp/enable', authRateLimiter, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { code } = req.body || {};
+    const rawCode = req.body?.code ?? req.body?.token;
+    const code = rawCode !== undefined && rawCode !== null ? String(rawCode).trim() : '';
     const user = req.auth!.user!;
     const sessionId = req.auth!.sessionId;
 
@@ -571,7 +750,8 @@ router.post('/mfa/totp/enable', authRateLimiter, async (req: AuthenticatedReques
  */
 router.post('/mfa/totp/verify', authRateLimiter, async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { code } = req.body || {};
+    const rawCode = req.body?.code ?? req.body?.token;
+    const code = rawCode !== undefined && rawCode !== null ? String(rawCode).trim() : '';
     const user = req.auth!.user!;
     const sessionId = req.auth!.sessionId;
 
@@ -623,7 +803,11 @@ router.post('/mfa/totp/verify', authRateLimiter, async (req: AuthenticatedReques
  * POST /api/auth/mfa/passkey/register-options
  * Generates WebAuthn registration options.
  */
-router.post('/mfa/passkey/register-options', async (req: AuthenticatedRequest, res, next) => {
+router.post(
+  ['/mfa/passkey/register-options', '/passkey/register-options'],
+  requirePreMfaUser,
+  requireCsrf,
+  async (req: AuthenticatedRequest, res, next) => {
   try {
     const user = req.auth!.user!;
     const sessionId = req.auth!.sessionId;
@@ -675,11 +859,16 @@ router.post('/mfa/passkey/register-options', async (req: AuthenticatedRequest, r
  * Verifies or directly registers passkey credentials (supports headless/test environments).
  */
 router.post(
-  '/mfa/passkey/register-verify',
+  ['/mfa/passkey/register-verify', '/passkey/register-verify'],
+  requirePreMfaUser,
+  requireCsrf,
   authRateLimiter,
   async (req: AuthenticatedRequest, res, next) => {
     try {
-      const { credentialId, publicKey, deviceName, attestationResponse } = req.body || {};
+      const credentialId = req.body?.credentialId ?? req.body?.credential_id ?? req.body?.id;
+      const publicKey = req.body?.publicKey ?? req.body?.public_key;
+      const deviceName = req.body?.deviceName ?? req.body?.device_name;
+      const attestationResponse = req.body?.attestationResponse ?? req.body?.attestation_response;
       const user = req.auth!.user!;
       const sessionId = req.auth!.sessionId;
 
@@ -772,11 +961,12 @@ router.post(
  * Redeems a single-use 2FA recovery code.
  */
 router.post(
-  '/mfa/recovery/verify',
+  ['/mfa/recovery/verify', '/mfa/recovery'],
   authRateLimiter,
   async (req: AuthenticatedRequest, res, next) => {
     try {
-      const { recoveryCode } = req.body || {};
+      const rawRecovery = req.body?.recoveryCode ?? req.body?.recovery_code ?? req.body?.code;
+      const recoveryCode = rawRecovery !== undefined && rawRecovery !== null ? String(rawRecovery).trim() : '';
       const user = req.auth!.user!;
       const sessionId = req.auth!.sessionId;
 
@@ -877,7 +1067,8 @@ router.post('/passkey/login-options', authRateLimiter, async (req, res, next) =>
  */
 router.post('/passkey/login-verify', authRateLimiter, async (req, res, next) => {
   try {
-    const { email, credentialId } = req.body || {};
+    const email = req.body?.email;
+    const credentialId = req.body?.credentialId ?? req.body?.credential_id ?? req.body?.id;
     if (!email || !credentialId) {
       res.status(400).json({ error: 'Email and credentialId are required' });
       return;
@@ -967,7 +1158,11 @@ router.post('/passkey/login-verify', authRateLimiter, async (req, res, next) => 
  */
 router.post('/assisted-enroll', authRateLimiter, async (req, res, next) => {
   try {
-    const { token, firstName, deviceName, credentialId, publicKey } = req.body || {};
+    const token = req.body?.token;
+    const firstName = req.body?.firstName ?? req.body?.first_name;
+    const deviceName = req.body?.deviceName ?? req.body?.device_name;
+    const credentialId = req.body?.credentialId ?? req.body?.credential_id ?? req.body?.id;
+    const publicKey = req.body?.publicKey ?? req.body?.public_key;
     if (!token || typeof token !== 'string') {
       res.status(400).json({ error: 'Token is required' });
       return;

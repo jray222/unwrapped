@@ -215,88 +215,113 @@ router.post(
  * POST /families/:familyId/claims/:claimId/release
  * Release (delete) an existing claim.
  */
+const releaseClaimHandler = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let { familyId, claimId } = req.params;
+
+    if (!familyId && claimId) {
+      await withSystemContext(async (sysClient) => {
+        const cRes = await sysClient.query('SELECT family_id FROM claims WHERE id = $1', [claimId]);
+        if (cRes.rows.length > 0) familyId = cRes.rows[0].family_id;
+      });
+    }
+
+    if (!familyId) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    const released = await withFamilyContext(familyId, async (client) => {
+      const claimRes = await client.query<DbClaimRow>(
+        `SELECT * FROM claims WHERE id = $1 AND family_id = $2`,
+        [claimId, familyId]
+      );
+      if (claimRes.rows.length === 0) return null;
+      const claim = claimRes.rows[0];
+
+      const listRes = await client.query(
+        `SELECT * FROM lists WHERE id = $1 AND family_id = $2`,
+        [claim.list_id, familyId]
+      );
+      if (listRes.rows.length === 0) return null;
+      const list = listRes.rows[0];
+
+      const isFamilyAdmin = req.auth?.memberships?.some(
+        (m) => m.family_id === familyId && m.role === 'family_admin'
+      );
+      const isOwnerUser =
+        req.auth?.kind === 'user' && req.auth.user && claim.claimer_user_id === req.auth.user.id;
+      const isOwnerGuest =
+        req.auth?.kind === 'guest' &&
+        req.auth.guestLink &&
+        claim.claimer_guest_link_id === req.auth.guestLink.id;
+
+      if (!isFamilyAdmin && !isOwnerUser && !isOwnerGuest) {
+        const forbiddenErr = new Error('Not authorized to release this claim');
+        (forbiddenErr as any).status = 403;
+        throw forbiddenErr;
+      }
+
+      if (claim.assignment_id) {
+        await client.query(
+          `UPDATE assignments SET status = 'couldnt_get_it', updated_at = NOW() WHERE id = $1`,
+          [claim.assignment_id]
+        );
+      }
+
+      await client.query(`DELETE FROM claims WHERE id = $1`, [claimId]);
+
+      const actorLabel =
+        req.auth?.kind === 'user' && req.auth.user
+          ? extractFirstName(req.auth.user.first_name)
+          : req.auth?.kind === 'guest' && req.auth.guestLink
+            ? extractFirstName(req.auth.guestLink.guest_first_name)
+            : 'Someone';
+
+      await recordAuditLog(client, {
+        familyId,
+        actorUserId: req.auth?.user?.id ?? null,
+        actorLabel,
+        action: 'ITEM_RELEASED',
+        targetRecipientUserId: list.recipient_user_id,
+        isSurpriseSensitive: true,
+        metadata: { claimId, itemId: claim.item_id },
+      });
+
+      return true;
+    });
+
+    if (!released) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    res.status(200).json({ released: true });
+  } catch (err: any) {
+    if (err.status === 403) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    next(err);
+  }
+};
+
 router.post(
   '/families/:familyId/claims/:claimId/release',
   requireFamilyAccess(['family_admin', 'member'], true),
   requireCsrf,
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { familyId, claimId } = req.params;
-
-      const released = await withFamilyContext(familyId, async (client) => {
-        const claimRes = await client.query<DbClaimRow>(
-          `SELECT * FROM claims WHERE id = $1 AND family_id = $2`,
-          [claimId, familyId]
-        );
-        if (claimRes.rows.length === 0) return null;
-        const claim = claimRes.rows[0];
-
-        const listRes = await client.query(
-          `SELECT * FROM lists WHERE id = $1 AND family_id = $2`,
-          [claim.list_id, familyId]
-        );
-        if (listRes.rows.length === 0) return null;
-        const list = listRes.rows[0];
-
-        const isFamilyAdmin = req.auth?.memberships?.some(
-          (m) => m.family_id === familyId && m.role === 'family_admin'
-        );
-        const isOwnerUser =
-          req.auth?.kind === 'user' && req.auth.user && claim.claimer_user_id === req.auth.user.id;
-        const isOwnerGuest =
-          req.auth?.kind === 'guest' &&
-          req.auth.guestLink &&
-          claim.claimer_guest_link_id === req.auth.guestLink.id;
-
-        if (!isFamilyAdmin && !isOwnerUser && !isOwnerGuest) {
-          const forbiddenErr = new Error('Not authorized to release this claim');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
-        }
-
-        if (claim.assignment_id) {
-          await client.query(
-            `UPDATE assignments SET status = 'couldnt_get_it', updated_at = NOW() WHERE id = $1`,
-            [claim.assignment_id]
-          );
-        }
-
-        await client.query(`DELETE FROM claims WHERE id = $1`, [claimId]);
-
-        const actorLabel =
-          req.auth?.kind === 'user' && req.auth.user
-            ? extractFirstName(req.auth.user.first_name)
-            : req.auth?.kind === 'guest' && req.auth.guestLink
-              ? extractFirstName(req.auth.guestLink.guest_first_name)
-              : 'Someone';
-
-        await recordAuditLog(client, {
-          familyId,
-          actorUserId: req.auth?.user?.id ?? null,
-          actorLabel,
-          action: 'ITEM_RELEASED',
-          targetRecipientUserId: list.recipient_user_id,
-          isSurpriseSensitive: true,
-          metadata: { claimId, itemId: claim.item_id },
-        });
-
-        return true;
-      });
-
-      if (!released) {
-        res.status(404).json({ error: 'Not found' });
-        return;
-      }
-
-      res.status(200).json({ released: true });
-    } catch (err: any) {
-      if (err.status === 403) {
-        res.status(403).json({ error: err.message });
-        return;
-      }
-      next(err);
-    }
-  }
+  releaseClaimHandler
+);
+router.delete(
+  '/families/:familyId/claims/:claimId',
+  requireFamilyAccess(['family_admin', 'member'], true),
+  requireCsrf,
+  releaseClaimHandler
+);
+router.delete(
+  '/claims/:claimId',
+  requireCsrf,
+  releaseClaimHandler
 );
 
 /**
@@ -378,7 +403,8 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { familyId, itemId } = req.params;
-      const amountCents = parseInt(String(req.body.amountCents), 10);
+      const rawAmount = req.body?.amountCents ?? req.body?.amount_cents;
+      const amountCents = parseInt(String(rawAmount), 10);
 
       if (isNaN(amountCents) || amountCents <= 0) {
         res.status(400).json({ error: 'Valid amount in cents is required' });
@@ -491,7 +517,9 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { familyId } = req.params;
-      const { itemIds, assigneeFirstName, assignmentLinkId } = req.body;
+      const itemIds = req.body?.itemIds ?? req.body?.item_ids;
+      const assigneeFirstName = req.body?.assigneeFirstName ?? req.body?.assignee_first_name;
+      const assignmentLinkId = req.body?.assignmentLinkId ?? req.body?.assignment_link_id;
 
       if (!Array.isArray(itemIds) || itemIds.length === 0) {
         res.status(400).json({ error: 'itemIds array is required' });
@@ -598,132 +626,215 @@ router.post(
  * PATCH /families/:familyId/assignments/:assignmentId
  * Update assignment status (e.g. bought or couldn't get it / reassign).
  */
+const updateAssignmentHandler = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.auth) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    let { familyId, assignmentId } = req.params;
+    if (!familyId && assignmentId) {
+      await withSystemContext(async (sysClient) => {
+        const aRes = await sysClient.query('SELECT family_id FROM assignments WHERE id = $1', [assignmentId]);
+        if (aRes.rows.length > 0) familyId = aRes.rows[0].family_id;
+      });
+    }
+
+    if (!familyId) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    const status = req.body?.status;
+    const reassignToFirstName = req.body?.reassignToFirstName ?? req.body?.reassign_to_first_name;
+
+    if (!status || !['assigned', 'bought', 'couldnt_get_it'].includes(status)) {
+      res.status(400).json({ error: 'Valid status is required' });
+      return;
+    }
+
+    const assignment = await withFamilyContext(familyId, async (client) => {
+      const aRes = await client.query(
+        `SELECT a.*, l.recipient_user_id
+         FROM assignments a
+         JOIN lists l ON l.id = a.list_id
+         WHERE a.id = $1 AND a.family_id = $2`,
+        [assignmentId, familyId]
+      );
+      if (aRes.rows.length === 0) return null;
+      const assignRow = aRes.rows[0];
+
+      let authorized = false;
+      let actorLabel = 'Assignee';
+      let actorUserId: string | null = null;
+
+      if (req.auth!.kind === 'user' && req.auth!.user) {
+        const isFamilyAdmin = req.auth!.memberships?.some(
+          (m) => m.family_id === familyId && m.role === 'family_admin'
+        );
+        if (assignRow.assigner_user_id === req.auth!.user.id || isFamilyAdmin) {
+          authorized = true;
+          actorUserId = req.auth!.user.id;
+          actorLabel = extractFirstName(req.auth!.user.first_name);
+        }
+      } else if (req.auth!.kind === 'assignment' && req.auth!.assignmentLink) {
+        if (
+          req.auth!.assignmentLink.family_id === familyId &&
+          req.auth!.assignmentLink.id === assignRow.assignment_link_id
+        ) {
+          authorized = true;
+          actorLabel = extractFirstName(req.auth!.assignmentLink.assignee_first_name);
+        }
+      }
+
+      if (!authorized) {
+        const forbiddenErr = new Error('Access denied');
+        (forbiddenErr as any).status = 403;
+        throw forbiddenErr;
+      }
+
+      let updatedAssignment: RawAssignmentRow;
+
+      if (status === 'bought') {
+        const updRes = await client.query<RawAssignmentRow>(
+          `UPDATE assignments SET status = 'bought', updated_at = NOW() WHERE id = $1 RETURNING *`,
+          [assignmentId]
+        );
+        updatedAssignment = updRes.rows[0];
+        await client.query(`UPDATE claims SET bought = true WHERE assignment_id = $1`, [
+          assignmentId,
+        ]);
+      } else if (status === 'couldnt_get_it') {
+        if (reassignToFirstName && typeof reassignToFirstName === 'string' && reassignToFirstName.trim()) {
+          const cleanName = extractFirstName(reassignToFirstName.trim());
+          const updRes = await client.query<RawAssignmentRow>(
+            `UPDATE assignments SET assignee_first_name = $1, status = 'assigned', updated_at = NOW() WHERE id = $2 RETURNING *`,
+            [cleanName, assignmentId]
+          );
+          updatedAssignment = updRes.rows[0];
+          await client.query(
+            `UPDATE claims SET claimer_first_name = $1, bought = false WHERE assignment_id = $2`,
+            [cleanName, assignmentId]
+          );
+        } else {
+          const updRes = await client.query<RawAssignmentRow>(
+            `UPDATE assignments SET status = 'couldnt_get_it', updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [assignmentId]
+          );
+          updatedAssignment = updRes.rows[0];
+          // Immediately release linked claim back to available
+          await client.query(`DELETE FROM claims WHERE assignment_id = $1`, [assignmentId]);
+        }
+      } else {
+        // status === 'assigned'
+        const updRes = await client.query<RawAssignmentRow>(
+          `UPDATE assignments SET status = 'assigned', updated_at = NOW() WHERE id = $1 RETURNING *`,
+          [assignmentId]
+        );
+        updatedAssignment = updRes.rows[0];
+        await client.query(`UPDATE claims SET bought = false WHERE assignment_id = $1`, [
+          assignmentId,
+        ]);
+      }
+
+      await recordAuditLog(client, {
+        familyId,
+        actorUserId,
+        actorLabel,
+        action: 'ASSIGNMENT_UPDATED',
+        targetRecipientUserId: assignRow.recipient_user_id,
+        isSurpriseSensitive: true,
+        metadata: { assignmentId, status, reassignToFirstName },
+      });
+
+      return updatedAssignment;
+    });
+
+    if (!assignment) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    res.status(200).json({ assignment });
+  } catch (err: any) {
+    if (err.status === 403) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    next(err);
+  }
+};
+
 router.patch(
   '/families/:familyId/assignments/:assignmentId',
   requireCsrf,
+  updateAssignmentHandler
+);
+router.put(
+  '/families/:familyId/assignments/:assignmentId',
+  requireCsrf,
+  updateAssignmentHandler
+);
+router.put(
+  '/families/:familyId/assignments/:assignmentId/status',
+  requireCsrf,
+  updateAssignmentHandler
+);
+router.put(
+  '/assignments/:assignmentId/status',
+  requireCsrf,
+  updateAssignmentHandler
+);
+
+/**
+ * GET /families/:familyId/assignments
+ * Lists assignments created by the current user in this family.
+ */
+router.get(
+  '/families/:familyId/assignments',
+  requireFamilyAccess(['family_admin', 'member']),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth) {
-        res.status(401).json({ error: 'Authentication required' });
-        return;
-      }
+      const { familyId } = req.params;
+      const currentUser = req.auth!.user!;
 
-      const { familyId, assignmentId } = req.params;
-      const { status, reassignToFirstName } = req.body;
-
-      if (!status || !['assigned', 'bought', 'couldnt_get_it'].includes(status)) {
-        res.status(400).json({ error: 'Valid status is required' });
-        return;
-      }
-
-      const assignment = await withFamilyContext(familyId, async (client) => {
-        const aRes = await client.query(
-          `SELECT a.*, l.recipient_user_id
+      const assignments = await withFamilyContext(familyId, async (client) => {
+        const queryRes = await client.query(
+          `SELECT a.id, a.item_id, a.list_id, a.assignee_first_name, a.status, a.created_at, a.updated_at,
+                  i.name AS item_name, i.store_url, i.store_name, i.price_cents, i.image_url, i.notes AS item_notes,
+                  l.name AS list_name, l.event_date, l.recipient_first_name
            FROM assignments a
+           JOIN items i ON i.id = a.item_id
            JOIN lists l ON l.id = a.list_id
-           WHERE a.id = $1 AND a.family_id = $2`,
-          [assignmentId, familyId]
+           WHERE a.family_id = $1 AND a.assigner_user_id = $2
+           ORDER BY a.created_at DESC`,
+          [familyId, currentUser.id]
         );
-        if (aRes.rows.length === 0) return null;
-        const assignRow = aRes.rows[0];
 
-        let authorized = false;
-        let actorLabel = 'Assignee';
-        let actorUserId: string | null = null;
-
-        if (req.auth!.kind === 'user' && req.auth!.user) {
-          const isFamilyAdmin = req.auth!.memberships?.some(
-            (m) => m.family_id === familyId && m.role === 'family_admin'
-          );
-          if (assignRow.assigner_user_id === req.auth!.user.id || isFamilyAdmin) {
-            authorized = true;
-            actorUserId = req.auth!.user.id;
-            actorLabel = extractFirstName(req.auth!.user.first_name);
-          }
-        } else if (req.auth!.kind === 'assignment' && req.auth!.assignmentLink) {
-          if (
-            req.auth!.assignmentLink.family_id === familyId &&
-            req.auth!.assignmentLink.id === assignRow.assignment_link_id
-          ) {
-            authorized = true;
-            actorLabel = extractFirstName(req.auth!.assignmentLink.assignee_first_name);
-          }
-        }
-
-        if (!authorized) {
-          const forbiddenErr = new Error('Access denied');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
-        }
-
-        let updatedAssignment: RawAssignmentRow;
-
-        if (status === 'bought') {
-          const updRes = await client.query<RawAssignmentRow>(
-            `UPDATE assignments SET status = 'bought', updated_at = NOW() WHERE id = $1 RETURNING *`,
-            [assignmentId]
-          );
-          updatedAssignment = updRes.rows[0];
-          await client.query(`UPDATE claims SET bought = true WHERE assignment_id = $1`, [
-            assignmentId,
-          ]);
-        } else if (status === 'couldnt_get_it') {
-          if (reassignToFirstName && typeof reassignToFirstName === 'string' && reassignToFirstName.trim()) {
-            const cleanName = extractFirstName(reassignToFirstName.trim());
-            const updRes = await client.query<RawAssignmentRow>(
-              `UPDATE assignments SET assignee_first_name = $1, status = 'assigned', updated_at = NOW() WHERE id = $2 RETURNING *`,
-              [cleanName, assignmentId]
-            );
-            updatedAssignment = updRes.rows[0];
-            await client.query(
-              `UPDATE claims SET claimer_first_name = $1, bought = false WHERE assignment_id = $2`,
-              [cleanName, assignmentId]
-            );
-          } else {
-            const updRes = await client.query<RawAssignmentRow>(
-              `UPDATE assignments SET status = 'couldnt_get_it', updated_at = NOW() WHERE id = $1 RETURNING *`,
-              [assignmentId]
-            );
-            updatedAssignment = updRes.rows[0];
-            // Immediately release linked claim back to available
-            await client.query(`DELETE FROM claims WHERE assignment_id = $1`, [assignmentId]);
-          }
-        } else {
-          // status === 'assigned'
-          const updRes = await client.query<RawAssignmentRow>(
-            `UPDATE assignments SET status = 'assigned', updated_at = NOW() WHERE id = $1 RETURNING *`,
-            [assignmentId]
-          );
-          updatedAssignment = updRes.rows[0];
-          await client.query(`UPDATE claims SET bought = false WHERE assignment_id = $1`, [
-            assignmentId,
-          ]);
-        }
-
-        await recordAuditLog(client, {
-          familyId,
-          actorUserId,
-          actorLabel,
-          action: 'ASSIGNMENT_UPDATED',
-          targetRecipientUserId: assignRow.recipient_user_id,
-          isSurpriseSensitive: true,
-          metadata: { assignmentId, status, reassignToFirstName },
-        });
-
-        return updatedAssignment;
+        return queryRes.rows.map((r) => ({
+          id: r.id,
+          itemId: r.item_id,
+          listId: r.list_id,
+          name: r.item_name,
+          itemName: r.item_name,
+          storeUrl: r.store_url,
+          storeName: r.store_name,
+          priceCents: r.price_cents,
+          imageUrl: r.image_url,
+          notes: r.item_notes,
+          status: r.status,
+          listName: r.list_name,
+          recipientFirstName: extractFirstName(r.recipient_first_name),
+          assigneeFirstName: extractFirstName(r.assignee_first_name),
+          eventDate: r.event_date,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        }));
       });
 
-      if (!assignment) {
-        res.status(404).json({ error: 'Not found' });
-        return;
-      }
-
-      res.status(200).json({ assignment });
-    } catch (err: any) {
-      if (err.status === 403) {
-        res.status(403).json({ error: err.message });
-        return;
-      }
+      res.json({ assignments });
+    } catch (err) {
       next(err);
     }
   }

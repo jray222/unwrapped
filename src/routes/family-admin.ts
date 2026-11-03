@@ -208,7 +208,9 @@ router.post(
   async (req: AuthenticatedRequest, res, next) => {
     try {
       const familyId = req.params.familyId;
-      const { email, firstName, lastName } = req.body || {};
+      const email = req.body?.email;
+      const firstName = req.body?.firstName ?? req.body?.first_name;
+      const lastName = req.body?.lastName ?? req.body?.last_name;
 
       if (!email || !firstName) {
         res.status(400).json({ error: 'Email and first name are required' });
@@ -294,7 +296,9 @@ router.post(
   async (req: AuthenticatedRequest, res, next) => {
     try {
       const familyId = req.params.familyId;
-      const { guestFirstName, allowedListIds, expiresInDays } = req.body || {};
+      const guestFirstName = req.body?.guestFirstName ?? req.body?.guest_first_name;
+      const allowedListIds = req.body?.allowedListIds ?? req.body?.allowed_list_ids;
+      const expiresInDays = req.body?.expiresInDays ?? req.body?.expires_in_days;
 
       if (!guestFirstName || typeof guestFirstName !== 'string' || !guestFirstName.trim()) {
         res.status(400).json({ error: 'Guest first name is required' });
@@ -392,50 +396,58 @@ router.get(
  * POST /api/families/:familyId/guest-links/:linkId/revoke
  * One-tap revocation of a guest link and termination of all associated active sessions.
  */
+const revokeGuestLinkHandler = async (req: AuthenticatedRequest, res: any, next: any) => {
+  try {
+    const { familyId, linkId } = req.params;
+    const currentUser = req.auth!.user!;
+    const actorLabel = `${currentUser.first_name} ${currentUser.last_name}`.trim();
+
+    const revoked = await withFamilyContext(familyId, async (client) => {
+      const result = await client.query(
+        `UPDATE guest_links
+         SET revoked_at = NOW()
+         WHERE id = $1 AND family_id = $2`,
+        [linkId, familyId]
+      );
+
+      if (result.rowCount === 0) return false;
+
+      // Delete active sessions for this guest link
+      await client.query('DELETE FROM sessions WHERE guest_link_id = $1', [linkId]);
+
+      await recordAuditLog(client, {
+        familyId,
+        actorUserId: currentUser.id,
+        actorLabel,
+        action: 'GUEST_LINK_REVOKED',
+        metadata: { guestLinkId: linkId },
+      });
+
+      return true;
+    });
+
+    if (!revoked) {
+      res.status(404).json({ error: 'Guest link not found' });
+      return;
+    }
+
+    res.json({ success: true, message: 'Guest link revoked' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 router.post(
   '/guest-links/:linkId/revoke',
   requireFamilyAccess(['family_admin', 'member']),
   requireCsrf,
-  async (req: AuthenticatedRequest, res, next) => {
-    try {
-      const { familyId, linkId } = req.params;
-      const currentUser = req.auth!.user!;
-      const actorLabel = `${currentUser.first_name} ${currentUser.last_name}`.trim();
-
-      const revoked = await withFamilyContext(familyId, async (client) => {
-        const result = await client.query(
-          `UPDATE guest_links
-           SET revoked_at = NOW()
-           WHERE id = $1 AND family_id = $2`,
-          [linkId, familyId]
-        );
-
-        if (result.rowCount === 0) return false;
-
-        // Delete active sessions for this guest link
-        await client.query('DELETE FROM sessions WHERE guest_link_id = $1', [linkId]);
-
-        await recordAuditLog(client, {
-          familyId,
-          actorUserId: currentUser.id,
-          actorLabel,
-          action: 'GUEST_LINK_REVOKED',
-          metadata: { guestLinkId: linkId },
-        });
-
-        return true;
-      });
-
-      if (!revoked) {
-        res.status(404).json({ error: 'Guest link not found' });
-        return;
-      }
-
-      res.json({ success: true, message: 'Guest link revoked' });
-    } catch (err) {
-      next(err);
-    }
-  }
+  revokeGuestLinkHandler
+);
+router.delete(
+  '/guest-links/:linkId',
+  requireFamilyAccess(['family_admin', 'member']),
+  requireCsrf,
+  revokeGuestLinkHandler
 );
 
 /**
@@ -449,7 +461,8 @@ router.post(
   async (req: AuthenticatedRequest, res, next) => {
     try {
       const familyId = req.params.familyId;
-      const { assigneeFirstName, expiresInDays } = req.body || {};
+      const assigneeFirstName = req.body?.assigneeFirstName ?? req.body?.assignee_first_name;
+      const expiresInDays = req.body?.expiresInDays ?? req.body?.expires_in_days;
 
       if (
         !assigneeFirstName ||
@@ -511,53 +524,91 @@ router.post(
 );
 
 /**
- * POST /api/families/:familyId/assignment-links/:linkId/revoke
- * Revokes an assignment link and destroys any active sessions.
+ * GET /api/families/:familyId/assignment-links
+ * Lists all assignment links created for this family.
  */
-router.post(
-  '/assignment-links/:linkId/revoke',
+router.get(
+  '/assignment-links',
   requireFamilyAccess(['family_admin', 'member']),
-  requireCsrf,
   async (req: AuthenticatedRequest, res, next) => {
     try {
-      const { familyId, linkId } = req.params;
-      const currentUser = req.auth!.user!;
-      const actorLabel = `${currentUser.first_name} ${currentUser.last_name}`.trim();
+      const familyId = req.params.familyId;
 
-      const revoked = await withFamilyContext(familyId, async (client) => {
+      const assignmentLinks = await withFamilyContext(familyId, async (client) => {
         const result = await client.query(
-          `UPDATE assignment_links
-           SET revoked_at = NOW()
-           WHERE id = $1 AND family_id = $2`,
-          [linkId, familyId]
+          `SELECT id, assignee_first_name, created_by_user_id,
+                  revoked_at, expires_at, created_at
+           FROM assignment_links
+           WHERE family_id = $1
+           ORDER BY created_at DESC`,
+          [familyId]
         );
-
-        if (result.rowCount === 0) return false;
-
-        // Delete active sessions for this assignment link
-        await client.query('DELETE FROM sessions WHERE assignment_link_id = $1', [linkId]);
-
-        await recordAuditLog(client, {
-          familyId,
-          actorUserId: currentUser.id,
-          actorLabel,
-          action: 'ASSIGNMENT_LINK_REVOKED',
-          metadata: { assignmentLinkId: linkId },
-        });
-
-        return true;
+        return result.rows;
       });
 
-      if (!revoked) {
-        res.status(404).json({ error: 'Assignment link not found' });
-        return;
-      }
-
-      res.json({ success: true, message: 'Assignment link revoked' });
+      res.json({ assignmentLinks });
     } catch (err) {
       next(err);
     }
   }
+);
+
+/**
+ * POST /api/families/:familyId/assignment-links/:linkId/revoke
+ * Revokes an assignment link and destroys any active sessions.
+ */
+const revokeAssignmentLinkHandler = async (req: AuthenticatedRequest, res: any, next: any) => {
+  try {
+    const { familyId, linkId } = req.params;
+    const currentUser = req.auth!.user!;
+    const actorLabel = `${currentUser.first_name} ${currentUser.last_name}`.trim();
+
+    const revoked = await withFamilyContext(familyId, async (client) => {
+      const result = await client.query(
+        `UPDATE assignment_links
+         SET revoked_at = NOW()
+         WHERE id = $1 AND family_id = $2`,
+        [linkId, familyId]
+      );
+
+      if (result.rowCount === 0) return false;
+
+      // Delete active sessions for this assignment link
+      await client.query('DELETE FROM sessions WHERE assignment_link_id = $1', [linkId]);
+
+      await recordAuditLog(client, {
+        familyId,
+        actorUserId: currentUser.id,
+        actorLabel,
+        action: 'ASSIGNMENT_LINK_REVOKED',
+        metadata: { assignmentLinkId: linkId },
+      });
+
+      return true;
+    });
+
+    if (!revoked) {
+      res.status(404).json({ error: 'Assignment link not found' });
+      return;
+    }
+
+    res.json({ success: true, message: 'Assignment link revoked' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.post(
+  '/assignment-links/:linkId/revoke',
+  requireFamilyAccess(['family_admin', 'member']),
+  requireCsrf,
+  revokeAssignmentLinkHandler
+);
+router.delete(
+  '/assignment-links/:linkId',
+  requireFamilyAccess(['family_admin', 'member']),
+  requireCsrf,
+  revokeAssignmentLinkHandler
 );
 
 /**

@@ -30,6 +30,8 @@ services:
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Unwrapped Family Wish List}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       APP_ORIGIN: ${APP_ORIGIN:-https://localhost:38443}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

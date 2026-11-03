@@ -21,6 +21,8 @@ const state = {
   offlineQueue: [],
   activeModal: null,
   modalContext: {},
+  pendingInviteToken: null,
+  pendingAssistedToken: null,
 };
 
 const OFFLINE_QUEUE_KEY = 'unwrapped_offline_queue';
@@ -260,11 +262,12 @@ async function apiFetch(url, options = {}) {
 // ==============================================================================
 
 async function loadNotifications() {
-  if (state.sessionKind !== 'user') return;
+  if (state.sessionKind !== 'user' || !state.currentFamilyId) return;
   try {
-    const res = await apiFetch('/api/notifications');
-    if (!res || res.status !== 200) return;
-    state.notifications = await res.json();
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/notifications`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    state.notifications = data.notifications || data || [];
     renderNotifications();
   } catch (_err) {
     // Ignore notifications error silently
@@ -450,30 +453,44 @@ function handleUnauthenticatedRoute() {
     initGuestInterface();
   } else if (window.location.pathname === '/assignment') {
     initAssignmentInterface();
-  } else if (window.location.pathname === '/accept-invite') {
-    checkPendingInvite();
-    showView('view-auth');
   } else {
     showView('view-auth');
+    checkPendingInvite();
   }
 }
 
 async function checkPendingInvite() {
   try {
     const res = await apiFetch('/api/links/pending');
-    if (!res || res.status !== 200) return;
-    const info = await res.json();
-    if (info && info.family_name) {
-      const banner = document.getElementById('subview-invite-accept');
-      const title = document.getElementById('invite-welcome-title');
-      const desc = document.getElementById('invite-welcome-desc');
-      if (banner && title && desc) {
-        title.textContent = `🎁 Welcome to the ${info.family_name} Family!`;
-        desc.textContent = info.is_assisted_enrollment
-          ? `Admin-Assisted passkey enrollment for ${info.first_name || 'you'}. Tap below to set up your 1-tap passkey!`
-          : `You've been invited by ${info.invited_by || 'your family'}. Join in seconds!`;
-        banner.style.display = 'block';
+    if (!res || !res.ok) return;
+    const pending = await res.json();
+    const inviteToken = pending.inviteToken;
+    const assistedToken = pending.assistedToken;
+
+    state.pendingInviteToken = inviteToken || null;
+    state.pendingAssistedToken = assistedToken || null;
+
+    const tokenToQuery = inviteToken || assistedToken;
+    if (!tokenToQuery) return;
+
+    const infoRes = await apiFetch(`/api/auth/invite-info/${tokenToQuery}`);
+    if (!infoRes || !infoRes.ok) return;
+    const info = await infoRes.json();
+
+    const banner = document.getElementById('subview-invite-accept');
+    const title = document.getElementById('invite-welcome-title');
+    const desc = document.getElementById('invite-welcome-desc');
+    const passkeyBtn = document.getElementById('btn-accept-with-passkey');
+
+    if (banner && title && desc) {
+      title.textContent = `🎁 Welcome to the ${info.familyName || 'Family'} Wish List!`;
+      if (info.isAssistedEnrollment || assistedToken) {
+        desc.textContent = `Admin-assisted enrollment for ${info.email || 'you'}. Tap below to complete your 1-tap passkey setup!`;
+        if (passkeyBtn) passkeyBtn.textContent = '🔑 Set Up 1-Tap Passkey (One Tap & Done!)';
+      } else {
+        desc.textContent = `You've been invited to join the ${info.familyName || 'family'} wish list as a ${info.role === 'family_admin' ? 'Family Admin' : 'Family Member'} (${info.email}).`;
       }
+      banner.style.display = 'block';
     }
   } catch (_e) {
     // Ignore error
@@ -534,8 +551,9 @@ async function loadFamilyWishLists(familyId) {
   if (!familyId) return;
   try {
     const res = await apiFetch(`/api/families/${familyId}/lists`);
-    if (!res || res.status !== 200) return;
-    state.lists = await res.json();
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    state.lists = data.lists || data || [];
     renderListsTabs();
 
     if (state.lists.length > 0) {
@@ -568,10 +586,21 @@ async function selectWishList(listId) {
   renderListsTabs();
 
   try {
-    const filterParam = state.currentPriceFilter ? `?price_range=${state.currentPriceFilter}` : '';
-    const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${listId}${filterParam}`);
-    if (!res || res.status !== 200) return;
-    state.currentList = await res.json();
+    let query = '';
+    if (state.currentPriceFilter === 'under25') query = '?maxPriceCents=2500';
+    else if (state.currentPriceFilter === '25to50') query = '?minPriceCents=2500&maxPriceCents=5000';
+    else if (state.currentPriceFilter === '50to100') query = '?minPriceCents=5000&maxPriceCents=10000';
+    else if (state.currentPriceFilter === '100plus') query = '?minPriceCents=10000';
+
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${listId}${query}`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    state.currentList = {
+      ...(data.list || data),
+      items: data.items || [],
+      availableItems: data.availableItems || [],
+      alreadyTakenItems: data.alreadyTakenItems || [],
+    };
     renderActiveWishList();
   } catch (_e) {
     // Error loading active list
@@ -793,14 +822,14 @@ function createItemCard(item, { isTaken, isSurpriseProtected }) {
 
   // Static Shopping Card Download Buttons (Available to everyone for offline shopping!)
   const btnCardPdf = document.createElement('a');
-  btnCardPdf.href = `/api/items/${item.id}/shopping-card.pdf`;
+  btnCardPdf.href = `/api/families/${state.currentFamilyId}/shopping-card.pdf?itemIds=${item.id}`;
   btnCardPdf.className = 'btn btn-secondary btn-sm';
   btnCardPdf.textContent = '📄 PDF Card';
   btnCardPdf.download = `${item.name.replace(/[^a-zA-Z0-9]/g, '_')}_card.pdf`;
   actions.appendChild(btnCardPdf);
 
   const btnCardPng = document.createElement('a');
-  btnCardPng.href = `/api/items/${item.id}/shopping-card.png`;
+  btnCardPng.href = `/api/families/${state.currentFamilyId}/shopping-card.png?itemIds=${item.id}`;
   btnCardPng.className = 'btn btn-secondary btn-sm';
   btnCardPng.textContent = '🖼️ PNG Card';
   btnCardPng.download = `${item.name.replace(/[^a-zA-Z0-9]/g, '_')}_card.png`;
@@ -835,13 +864,13 @@ function renderEmptyListState() {
 
 async function handleClaimItem(itemId, quantity = 1) {
   try {
-    const res = await apiFetch(`/api/items/${itemId}/claim`, {
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/items/${itemId}/claim`, {
       method: 'POST',
       body: JSON.stringify({ quantity }),
     });
 
-    if (res && res.status === 200) {
-      showToast('🎁 Gift claimed by you! The recipient won\'t see until after the event.');
+    if (res && res.ok) {
+      showToast("🎁 Gift claimed by you! The recipient won't see until after the event.");
       selectWishList(state.currentListId);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -850,7 +879,7 @@ async function handleClaimItem(itemId, quantity = 1) {
   } catch (_e) {
     if (!navigator.onLine) {
       enqueueOfflineAction({
-        endpoint: `/api/items/${itemId}/claim`,
+        endpoint: `/api/families/${state.currentFamilyId}/items/${itemId}/claim`,
         method: 'POST',
         body: { quantity },
         description: 'Claimed gift',
@@ -861,16 +890,21 @@ async function handleClaimItem(itemId, quantity = 1) {
 
 async function handleReleaseClaim(claimId) {
   try {
-    const res = await apiFetch(`/api/claims/${claimId}`, { method: 'DELETE' });
-    if (res && res.status === 200) {
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/claims/${claimId}/release`, {
+      method: 'POST',
+    });
+    if (res && res.ok) {
       showToast('Claim released.');
       selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Could not release claim');
     }
   } catch (_e) {
     if (!navigator.onLine) {
       enqueueOfflineAction({
-        endpoint: `/api/claims/${claimId}`,
-        method: 'DELETE',
+        endpoint: `/api/families/${state.currentFamilyId}/claims/${claimId}/release`,
+        method: 'POST',
         description: 'Released claim',
       });
     }
@@ -935,8 +969,11 @@ async function loadAssignmentsView() {
   container.innerHTML = '<p>Loading your assignments...</p>';
 
   try {
-    const res = await apiFetch('/api/assignment/view');
-    if (!res || res.status !== 200) return;
+    const endpoint = state.sessionKind === 'assignment'
+      ? '/api/assignment/view'
+      : (state.currentFamilyId ? `/api/families/${state.currentFamilyId}/assignments` : '/api/assignment/view');
+    const res = await apiFetch(endpoint);
+    if (!res || !res.ok) return;
     const data = await res.json();
     renderAssignments(data.assignments || []);
   } catch (_e) {
@@ -968,12 +1005,12 @@ function renderAssignments(assignments) {
 
     const title = document.createElement('h3');
     title.className = 'item-name';
-    title.textContent = assign.item_name || 'Gift Item';
+    title.textContent = assign.item_name || assign.name || 'Gift Item';
     details.appendChild(title);
 
     const meta = document.createElement('div');
     meta.className = 'item-meta';
-    meta.textContent = `For: ${assign.recipient_first_name || 'Relative'} • Status: ${assign.status.toUpperCase()}`;
+    meta.textContent = `For: ${assign.recipient_first_name || assign.recipientFirstName || 'Relative'} • Status: ${(assign.status || 'assigned').toUpperCase()}`;
     details.appendChild(meta);
 
     // Big Buttons for status update
@@ -1002,8 +1039,8 @@ function renderAssignments(assignments) {
       btnShare.textContent = '📱 Share Card';
       btnShare.addEventListener('click', () => {
         navigator.share({
-          title: `Shopping Task: ${assign.item_name}`,
-          text: `Gift assignment for ${assign.recipient_first_name}: ${assign.item_name}`,
+          title: `Shopping Task: ${assign.item_name || assign.name}`,
+          text: `Gift assignment for ${assign.recipient_first_name || assign.recipientFirstName}: ${assign.item_name || assign.name}`,
           url: window.location.href,
         }).catch(() => {});
       });
@@ -1018,20 +1055,29 @@ function renderAssignments(assignments) {
 
 async function updateAssignmentStatus(assignmentId, status) {
   try {
-    const res = await apiFetch(`/api/assignments/${assignmentId}/status`, {
-      method: 'PUT',
+    const endpoint = state.currentFamilyId
+      ? `/api/families/${state.currentFamilyId}/assignments/${assignmentId}`
+      : `/api/assignments/${assignmentId}/status`;
+    const res = await apiFetch(endpoint, {
+      method: 'PATCH',
       body: JSON.stringify({ status }),
     });
 
-    if (res && res.status === 200) {
-      showToast(`Status updated to: ${status === 'bought' ? 'Bought ✅' : 'Couldn\'t get it ⚠️'}`);
+    if (res && res.ok) {
+      showToast(`Status updated to: ${status === 'bought' ? 'Bought ✅' : "Couldn't get it ⚠️"}`);
       loadAssignmentsView();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Could not update assignment status');
     }
   } catch (_e) {
     if (!navigator.onLine) {
+      const endpoint = state.currentFamilyId
+        ? `/api/families/${state.currentFamilyId}/assignments/${assignmentId}`
+        : `/api/assignments/${assignmentId}/status`;
       enqueueOfflineAction({
-        endpoint: `/api/assignments/${assignmentId}/status`,
-        method: 'PUT',
+        endpoint,
+        method: 'PATCH',
         body: { status },
         description: `Marked assignment as ${status}`,
       });
@@ -1051,16 +1097,18 @@ async function loadShareLinksView() {
   // Load guest links
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/guest-links`);
-    if (res && res.status === 200) {
-      renderGuestLinks(await res.json());
+    if (res && res.ok) {
+      const data = await res.json();
+      renderGuestLinks(data.guestLinks || data || []);
     }
   } catch (_e) {}
 
   // Load assignment links
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/assignment-links`);
-    if (res && res.status === 200) {
-      renderAssignmentLinks(await res.json());
+    if (res && res.ok) {
+      const data = await res.json();
+      renderAssignmentLinks(data.assignmentLinks || data || []);
     }
   } catch (_e) {}
 }
@@ -1070,7 +1118,9 @@ function renderGuestLinks(links) {
   if (!container) return;
   container.innerHTML = '';
 
-  links.forEach((l) => {
+  const list = Array.isArray(links) ? links : [];
+
+  list.forEach((l) => {
     const card = document.createElement('div');
     card.className = 'link-card';
 
@@ -1082,7 +1132,9 @@ function renderGuestLinks(links) {
     const actions = document.createElement('div');
     actions.className = 'link-actions-group';
 
-    const url = `${window.location.origin}/g/${l.raw_token || l.id}`;
+    const url = l.shareUrl
+      ? (l.shareUrl.startsWith('http') ? l.shareUrl : `${window.location.origin}${l.shareUrl}`)
+      : `${window.location.origin}/g/${l.raw_token || l.token || l.id}`;
 
     // Copy Link Button
     const btnCopy = document.createElement('button');
@@ -1117,7 +1169,7 @@ function renderGuestLinks(links) {
     btnRevoke.textContent = 'Revoke';
     btnRevoke.addEventListener('click', async () => {
       if (confirm(`Revoke guest link for ${l.guest_first_name}?`)) {
-        await apiFetch(`/api/families/${state.currentFamilyId}/guest-links/${l.id}`, { method: 'DELETE' });
+        await apiFetch(`/api/families/${state.currentFamilyId}/guest-links/${l.id}/revoke`, { method: 'POST' });
         loadShareLinksView();
       }
     });
@@ -1133,7 +1185,9 @@ function renderAssignmentLinks(links) {
   if (!container) return;
   container.innerHTML = '';
 
-  links.forEach((l) => {
+  const list = Array.isArray(links) ? links : [];
+
+  list.forEach((l) => {
     const card = document.createElement('div');
     card.className = 'link-card';
 
@@ -1145,7 +1199,9 @@ function renderAssignmentLinks(links) {
     const actions = document.createElement('div');
     actions.className = 'link-actions-group';
 
-    const url = `${window.location.origin}/a/${l.raw_token || l.id}`;
+    const url = l.shareUrl
+      ? (l.shareUrl.startsWith('http') ? l.shareUrl : `${window.location.origin}${l.shareUrl}`)
+      : `${window.location.origin}/a/${l.raw_token || l.token || l.id}`;
 
     const btnCopy = document.createElement('button');
     btnCopy.type = 'button';
@@ -1170,7 +1226,7 @@ function renderAssignmentLinks(links) {
     btnRevoke.textContent = 'Revoke';
     btnRevoke.addEventListener('click', async () => {
       if (confirm(`Revoke assignment link for ${l.assignee_first_name}?`)) {
-        await apiFetch(`/api/families/${state.currentFamilyId}/assignment-links/${l.id}`, { method: 'DELETE' });
+        await apiFetch(`/api/families/${state.currentFamilyId}/assignment-links/${l.id}/revoke`, { method: 'POST' });
         loadShareLinksView();
       }
     });
@@ -1206,16 +1262,18 @@ async function loadFamilyAdminView() {
   // Members list
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/members`);
-    if (res && res.status === 200) {
-      renderFamilyMembers(await res.json());
+    if (res && res.ok) {
+      const data = await res.json();
+      renderFamilyMembers(data.members || data || []);
     }
   } catch (_e) {}
 
   // Audit log
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/audit-logs`);
-    if (res && res.status === 200) {
-      renderAuditLogs(await res.json());
+    if (res && res.ok) {
+      const data = await res.json();
+      renderAuditLogs(data.auditLogs || data || []);
     }
   } catch (_e) {}
 }
@@ -1225,7 +1283,9 @@ function renderFamilyMembers(members) {
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  members.forEach((m) => {
+  const list = Array.isArray(members) ? members : [];
+
+  list.forEach((m) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${m.first_name} ${m.last_name || ''}</strong></td>
@@ -1246,7 +1306,7 @@ function renderFamilyMembers(members) {
       const currentRole = e.target.getAttribute('data-role');
       const newRole = currentRole === 'family_admin' ? 'member' : 'family_admin';
       await apiFetch(`/api/families/${state.currentFamilyId}/members/${memberId}/role`, {
-        method: 'POST',
+        method: 'PATCH',
         body: JSON.stringify({ role: newRole }),
       });
       loadFamilyAdminView();
@@ -1259,7 +1319,9 @@ function renderAuditLogs(logs) {
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  logs.forEach((log) => {
+  const list = Array.isArray(logs) ? logs : [];
+
+  list.forEach((log) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${new Date(log.created_at).toLocaleString()}</td>
@@ -1289,9 +1351,10 @@ async function loadGuestView() {
 
   try {
     const res = await apiFetch('/api/guest/view');
-    if (!res || res.status !== 200) return;
+    if (!res || !res.ok) return;
     const data = await res.json();
-    renderGuestItems(data.items || []);
+    const items = data.items || (data.lists ? data.lists.flatMap((l) => l.items || []) : []);
+    renderGuestItems(items);
   } catch (_e) {
     container.innerHTML = '<p>Unable to load guest list offline.</p>';
   }
@@ -1399,9 +1462,9 @@ async function loadInstanceAdminView() {
 
   try {
     const res = await apiFetch('/api/instance-admin/families');
-    if (!res || res.status !== 200) return;
-    const families = await res.json();
-    renderInstanceFamilies(families);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    renderInstanceFamilies(data.families || data || []);
   } catch (_e) {
     container.innerHTML = '<p>Failed to load families.</p>';
   }
@@ -1412,7 +1475,9 @@ function renderInstanceFamilies(families) {
   if (!container) return;
   container.innerHTML = '';
 
-  families.forEach((f) => {
+  const list = Array.isArray(families) ? families : (families?.families || []);
+
+  list.forEach((f) => {
     const card = document.createElement('div');
     card.className = 'link-card';
     card.innerHTML = `
@@ -1507,13 +1572,17 @@ async function handlePasskeyLogin() {
 
 async function handlePasskeyRegister(deviceName = 'My Device') {
   if (!window.PublicKeyCredential) {
-    showToast('Passkeys are not supported on this browser.');
+    showToast('Passkeys are not supported on this browser. Opening Authenticator App setup...');
+    startTotpEnrollment();
     return;
   }
 
   try {
-    const optRes = await apiFetch('/api/auth/passkey/register-options', { method: 'POST' });
-    if (!optRes || optRes.status !== 200) return;
+    const optRes = await apiFetch('/api/auth/mfa/passkey/register-options', { method: 'POST' });
+    if (!optRes || !optRes.ok) {
+      startTotpEnrollment();
+      return;
+    }
     const options = await optRes.json();
 
     options.challenge = base64URLToBuffer(options.challenge);
@@ -1528,27 +1597,57 @@ async function handlePasskeyRegister(deviceName = 'My Device') {
     if (!credential) return;
 
     const payload = {
-      id: credential.id,
-      rawId: bufferToBase64URL(credential.rawId),
-      type: credential.type,
+      credentialId: credential.id,
+      publicKey: bufferToBase64URL(credential.rawId),
       deviceName,
-      response: {
-        clientDataJSON: bufferToBase64URL(credential.response.clientDataJSON),
-        attestationObject: bufferToBase64URL(credential.response.attestationObject),
+      attestationResponse: {
+        id: credential.id,
+        rawId: bufferToBase64URL(credential.rawId),
+        type: credential.type,
+        response: {
+          clientDataJSON: bufferToBase64URL(credential.response.clientDataJSON),
+          attestationObject: bufferToBase64URL(credential.response.attestationObject),
+        },
       },
     };
 
-    const verifyRes = await apiFetch('/api/auth/passkey/register-verify', {
+    const verifyRes = await apiFetch('/api/auth/mfa/passkey/register-verify', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
-    if (verifyRes && verifyRes.status === 200) {
+    if (verifyRes && verifyRes.ok) {
       showToast('🎉 Passkey successfully set up! You can now sign in with 1 tap.');
       checkCurrentSession();
+    } else {
+      startTotpEnrollment();
     }
   } catch (_e) {
     showToast('Passkey enrollment cancelled or error occurred.');
+  }
+}
+
+async function startTotpEnrollment() {
+  try {
+    const res = await apiFetch('/api/auth/mfa/totp/setup', { method: 'POST' });
+    if (!res || !res.ok) {
+      showToast('Could not initialize 2FA setup.');
+      return;
+    }
+    const data = await res.json();
+    const qrImg = document.getElementById('totp-qr-img');
+    const secretInput = document.getElementById('totp-secret-text');
+    const step1 = document.getElementById('totp-setup-step-1');
+    const step2 = document.getElementById('totp-setup-step-2');
+
+    if (qrImg) qrImg.src = data.qrCodeDataUrl;
+    if (secretInput) secretInput.value = data.secret;
+    if (step1) step1.style.display = 'block';
+    if (step2) step2.style.display = 'none';
+
+    openModal('modal-totp-enrollment');
+  } catch (_e) {
+    showToast('Error setting up 2FA.');
   }
 }
 
@@ -1614,9 +1713,13 @@ function bindEventListeners() {
       body: JSON.stringify({ email, password }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       const data = await res.json();
-      if (data.mfa_required) {
+      state.csrfToken = data.csrfToken || state.csrfToken;
+      if (data.mfaEnrollmentRequired) {
+        showToast('Mandatory 2FA setup required. Please enroll an authenticator app.');
+        startTotpEnrollment();
+      } else if (data.mfaRequired || data.mfa_required) {
         document.getElementById('mfa-step').style.display = 'block';
         document.getElementById('group-password').style.display = 'none';
         document.getElementById('btn-submit-login').style.display = 'none';
@@ -1638,18 +1741,18 @@ function bindEventListeners() {
     if (totpCode) {
       const res = await apiFetch('/api/auth/mfa/totp/verify', {
         method: 'POST',
-        body: JSON.stringify({ token: totpCode }),
+        body: JSON.stringify({ code: totpCode }),
       });
-      if (res && res.status === 200) {
+      if (res && res.ok) {
         checkCurrentSession();
         return;
       }
     } else if (recoveryCode) {
-      const res = await apiFetch('/api/auth/mfa/recovery', {
+      const res = await apiFetch('/api/auth/mfa/recovery/verify', {
         method: 'POST',
-        body: JSON.stringify({ code: recoveryCode }),
+        body: JSON.stringify({ recoveryCode }),
       });
-      if (res && res.status === 200) {
+      if (res && res.ok) {
         checkCurrentSession();
         return;
       }
@@ -1657,9 +1760,84 @@ function bindEventListeners() {
     showToast('Invalid 2FA code or recovery code.');
   });
 
+  // TOTP Enable Form in Modal
+  document.getElementById('form-totp-enable')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('totp-verify-code').value.trim();
+    if (!code) return;
+
+    const res = await apiFetch('/api/auth/mfa/totp/enable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+
+    if (res && res.ok) {
+      const data = await res.json();
+      const step1 = document.getElementById('totp-setup-step-1');
+      const step2 = document.getElementById('totp-setup-step-2');
+      const codesBox = document.getElementById('totp-recovery-codes-box');
+
+      if (step1) step1.style.display = 'none';
+      if (step2) step2.style.display = 'block';
+      if (codesBox && Array.isArray(data.recoveryCodes)) {
+        codesBox.innerHTML = data.recoveryCodes
+          .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+          .join('');
+      }
+      showToast('✅ 2FA successfully enabled!');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Invalid 6-digit verification code');
+    }
+  });
+
+  document.getElementById('btn-totp-complete')?.addEventListener('click', () => {
+    closeActiveModal();
+    checkCurrentSession();
+  });
+
   // Passkey Accept Invite Button
-  document.getElementById('btn-accept-with-passkey')?.addEventListener('click', () => {
-    handlePasskeyRegister('Passkey');
+  document.getElementById('btn-accept-with-passkey')?.addEventListener('click', async () => {
+    if (state.pendingAssistedToken) {
+      try {
+        const res = await apiFetch('/api/auth/assisted-enroll', {
+          method: 'POST',
+          body: JSON.stringify({ token: state.pendingAssistedToken }),
+        });
+        if (res && res.ok) {
+          const data = await res.json();
+          state.sessionKind = 'user';
+          state.currentUser = data.user;
+          state.csrfToken = data.csrfToken || '';
+          showToast('🎉 Passkey enrollment successful! Welcome to the family.');
+          if (data.recoveryCodes && data.recoveryCodes.length > 0) {
+            const step1 = document.getElementById('totp-setup-step-1');
+            const step2 = document.getElementById('totp-setup-step-2');
+            const codesBox = document.getElementById('totp-recovery-codes-box');
+            if (step1) step1.style.display = 'none';
+            if (step2) step2.style.display = 'block';
+            if (codesBox) {
+              codesBox.innerHTML = data.recoveryCodes
+                .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+                .join('');
+            }
+            openModal('modal-totp-enrollment');
+          } else {
+            checkCurrentSession();
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Assisted enrollment failed');
+        }
+      } catch (_e) {
+        showToast('Assisted enrollment failed');
+      }
+    } else if (state.pendingInviteToken) {
+      showToast('Please enter your name and password below to join, then you can enroll your passkey!');
+      document.getElementById('accept-first-name')?.focus();
+    } else {
+      handlePasskeyRegister('Passkey');
+    }
   });
 
   // Password Accept Invite Form
@@ -1669,14 +1847,33 @@ function bindEventListeners() {
     const lastName = document.getElementById('accept-last-name').value.trim();
     const password = document.getElementById('accept-password').value;
 
-    const res = await apiFetch('/api/auth/accept-invite', {
+    if (!state.pendingInviteToken) {
+      showToast('No pending invite found. Please use the invite link you received.');
+      return;
+    }
+
+    const res = await apiFetch('/api/auth/register-from-invite', {
       method: 'POST',
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
+      body: JSON.stringify({
+        inviteToken: state.pendingInviteToken,
+        firstName,
+        lastName,
+        password,
+      }),
     });
 
-    if (res && res.status === 200) {
-      showToast('Welcome to the family! You are now enrolled.');
-      checkCurrentSession();
+    if (res && res.ok) {
+      const data = await res.json();
+      state.sessionKind = 'user';
+      state.currentUser = data.user;
+      state.csrfToken = data.csrfToken || '';
+      showToast('Welcome to the family! Please complete Two-Factor Authentication setup.');
+      document.getElementById('subview-invite-accept').style.display = 'none';
+      if (data.mfaEnrollmentRequired) {
+        startTotpEnrollment();
+      } else {
+        checkCurrentSession();
+      }
     } else {
       const err = await res.json().catch(() => ({}));
       showToast(err.error || 'Failed to accept invitation');
@@ -1687,12 +1884,15 @@ function bindEventListeners() {
   document.getElementById('btn-reveal-thank-you')?.addEventListener('click', async () => {
     if (!state.currentListId) return;
     if (confirm('Reveal givers for this list? This will unlock Thank-You mode.')) {
-      const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/thank-you-reveal`, {
+      const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/reveal-thank-you`, {
         method: 'POST',
       });
-      if (res && res.status === 200) {
+      if (res && res.ok) {
         showToast('🎁 Thank-You list revealed! See who claimed your gifts below.');
         selectWishList(state.currentListId);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Could not reveal thank-you list');
       }
     }
   });
@@ -1730,22 +1930,25 @@ function bindEventListeners() {
       method: 'POST',
       body: JSON.stringify({
         name,
-        price_cents: priceCents,
-        store_name: storeName,
-        store_url: storeUrl,
-        image_url: imageUrl,
+        priceCents,
+        storeName,
+        storeUrl,
+        imageUrl,
         notes,
         priority,
         quantity,
-        allow_duplicates: allowDuplicates,
+        allowDuplicates,
       }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       showToast('🎁 Item added to wish list!');
       document.getElementById('form-add-item').reset();
       document.getElementById('accordion-add-item').removeAttribute('open');
       selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to add item');
     }
   });
 
@@ -1789,14 +1992,17 @@ function bindEventListeners() {
     const note = document.getElementById('pledge-note').value.trim();
 
     closeActiveModal();
-    const res = await apiFetch(`/api/items/${item.id}/pledge`, {
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/items/${item.id}/pledge`, {
       method: 'POST',
-      body: JSON.stringify({ amount_cents: amountCents, note }),
+      body: JSON.stringify({ amountCents, note }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       showToast(`🤝 Pledged $${amountDollars}! Thank you for contributing.`);
       selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Could not submit pledge');
     }
   });
 
@@ -1809,14 +2015,17 @@ function bindEventListeners() {
     const assigneeFirstName = document.getElementById('assign-relative-name').value.trim();
     closeActiveModal();
 
-    const res = await apiFetch(`/api/items/${item.id}/assign`, {
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/assignments`, {
       method: 'POST',
-      body: JSON.stringify({ assignee_first_name: assigneeFirstName }),
+      body: JSON.stringify({ itemIds: [item.id], assigneeFirstName }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       showToast(`👤 Item assigned to ${assigneeFirstName}!`);
       selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Could not assign gift');
     }
   });
 
@@ -1844,16 +2053,20 @@ function bindEventListeners() {
       method: 'POST',
       body: JSON.stringify({
         name,
-        recipient_first_name: recipientFirstName,
-        event_date: eventDate,
-        recipient_user_id: recipientType === 'myself' && state.currentUser ? state.currentUser.id : null,
+        recipientFirstName,
+        eventDate,
+        recipientUserId: recipientType === 'myself' && state.currentUser ? state.currentUser.id : null,
       }),
     });
 
-    if (res && res.status === 200) {
-      const newList = await res.json();
+    if (res && res.ok) {
+      const data = await res.json();
+      const newList = data.list || data;
       showToast(`✨ Created wish list "${newList.name}"!`);
       loadFamilyWishLists(state.currentFamilyId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create wish list');
     }
   });
 
@@ -1863,11 +2076,14 @@ function bindEventListeners() {
     const guestFirstName = document.getElementById('guest-first-name').value.trim();
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/guest-links`, {
       method: 'POST',
-      body: JSON.stringify({ guest_first_name: guestFirstName }),
+      body: JSON.stringify({ guestFirstName }),
     });
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       document.getElementById('form-create-guest-link').reset();
       loadShareLinksView();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create guest link');
     }
   });
 
@@ -1877,11 +2093,14 @@ function bindEventListeners() {
     const assigneeFirstName = document.getElementById('assignee-first-name').value.trim();
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/assignment-links`, {
       method: 'POST',
-      body: JSON.stringify({ assignee_first_name: assigneeFirstName }),
+      body: JSON.stringify({ assigneeFirstName }),
     });
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       document.getElementById('form-create-assignment-link').reset();
       loadShareLinksView();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create assignment link');
     }
   });
 
@@ -1894,9 +2113,12 @@ function bindEventListeners() {
       method: 'POST',
       body: JSON.stringify({ email, role }),
     });
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       const data = await res.json();
-      const url = `${window.location.origin}/invite/${data.raw_token || data.token || ''}`;
+      const token = data.inviteToken || data.raw_token || data.token || '';
+      const url = data.inviteUrl
+        ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
+        : `${window.location.origin}/invite/${token}`;
       document.getElementById('invite-result-box').innerHTML = `
         <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
           <h4>✅ 7-Day Invite Generated for ${email}</h4>
@@ -1910,6 +2132,9 @@ function bindEventListeners() {
         showToast('Invite link copied!');
       });
       document.getElementById('form-invite-member').reset();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create invite');
     }
   });
 
@@ -1922,12 +2147,15 @@ function bindEventListeners() {
 
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/assisted-enrollment`, {
       method: 'POST',
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
+      body: JSON.stringify({ firstName, lastName, email }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       const data = await res.json();
-      const url = `${window.location.origin}/assisted/${data.raw_token || data.token || ''}`;
+      const token = data.token || data.raw_token || '';
+      const url = data.assistedUrl
+        ? (data.assistedUrl.startsWith('http') ? data.assistedUrl : `${window.location.origin}${data.assistedUrl}`)
+        : `${window.location.origin}/assisted/${token}`;
       document.getElementById('assisted-result-box').innerHTML = `
         <div class="card" style="background: var(--gold-100); border-color: var(--gold-500);">
           <h4>✨ 1-Tap Passkey Setup Link for ${firstName}</h4>
@@ -1947,6 +2175,9 @@ function bindEventListeners() {
       document.getElementById('btn-qr-assisted')?.addEventListener('click', () => {
         showQrModal(url, `Assisted Setup for ${firstName}`);
       });
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create assisted enrollment link');
     }
   });
 
@@ -1969,7 +2200,7 @@ function bindEventListeners() {
       body: JSON.stringify({ token }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       state.sessionKind = 'instance_admin';
       const data = await res.json().catch(() => ({}));
       state.csrfToken = data.csrfToken || '';
@@ -1987,18 +2218,24 @@ function bindEventListeners() {
 
     const res = await apiFetch('/api/instance-admin/families', {
       method: 'POST',
-      body: JSON.stringify({ name, slug, admin_email: adminEmail }),
+      body: JSON.stringify({ name, slug, adminEmail }),
     });
 
-    if (res && res.status === 200) {
+    if (res && res.ok) {
       const data = await res.json();
-      const inviteUrl = `${window.location.origin}/invite/${data.invite_token || ''}`;
+      const token = data.bootstrapInviteToken || data.invite_token || data.token || '';
+      const inviteUrl = data.inviteUrl
+        ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
+        : `${window.location.origin}/invite/${token}`;
       document.getElementById('create-family-result').innerHTML = `
         <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
           <h4>✅ Family "${name}" Created Successfully</h4>
           <p class="form-hint">Initial Admin Invite Link for ${adminEmail}:</p>
           <input type="text" readonly value="${inviteUrl}" style="margin-bottom: 0.5rem;" onclick="this.select()">
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-family-invite">📋 Copy Invite</button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-family-invite">📋 Copy Invite</button>
+            <a href="${inviteUrl}" class="btn btn-primary btn-sm">👉 Open Invite &amp; Create Admin Account</a>
+          </div>
         </div>
       `;
       document.getElementById('btn-copy-family-invite')?.addEventListener('click', () => {
@@ -2007,6 +2244,9 @@ function bindEventListeners() {
       });
       document.getElementById('form-create-family').reset();
       loadInstanceAdminView();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to create family');
     }
   });
 

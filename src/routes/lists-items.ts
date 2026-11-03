@@ -34,7 +34,11 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const familyId = req.params.familyId;
-      const { name, eventDate, recipientUserId, recipientFirstName, includeCatchAll } = req.body;
+      const name = req.body?.name;
+      const eventDate = req.body?.eventDate ?? req.body?.event_date;
+      const recipientUserId = req.body?.recipientUserId ?? req.body?.recipient_user_id;
+      const recipientFirstName = req.body?.recipientFirstName ?? req.body?.recipient_first_name;
+      const includeCatchAll = req.body?.includeCatchAll ?? req.body?.include_catch_all;
 
       if (!name || typeof name !== 'string' || !name.trim()) {
         res.status(400).json({ error: 'List name is required' });
@@ -294,18 +298,16 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { familyId, listId } = req.params;
-      const {
-        name,
-        storeUrl,
-        storeName,
-        priceCents,
-        imageUrl,
-        notes,
-        priority,
-        quantity,
-        allowDuplicates,
-        isCatchAll,
-      } = req.body;
+      const name = req.body?.name;
+      const storeUrl = req.body?.storeUrl ?? req.body?.store_url;
+      const storeName = req.body?.storeName ?? req.body?.store_name;
+      const priceCents = req.body?.priceCents ?? req.body?.price_cents;
+      const imageUrl = req.body?.imageUrl ?? req.body?.image_url;
+      const notes = req.body?.notes;
+      const priority = req.body?.priority;
+      const quantity = req.body?.quantity;
+      const allowDuplicates = req.body?.allowDuplicates ?? req.body?.allow_duplicates;
+      const isCatchAll = req.body?.isCatchAll ?? req.body?.is_catch_all;
 
       if (!name || typeof name !== 'string' || !name.trim()) {
         res.status(400).json({ error: 'Item name is required' });
@@ -497,18 +499,19 @@ router.patch(
         }
 
         const name = req.body.name !== undefined ? String(req.body.name).trim() : oldItem.name;
-        const storeUrl =
-          req.body.storeUrl !== undefined ? String(req.body.storeUrl) : oldItem.store_url;
-        const storeName =
-          req.body.storeName !== undefined ? String(req.body.storeName) : oldItem.store_name;
+        const rawStoreUrl = req.body.storeUrl ?? req.body.store_url;
+        const storeUrl = rawStoreUrl !== undefined ? String(rawStoreUrl) : oldItem.store_url;
+        const rawStoreName = req.body.storeName ?? req.body.store_name;
+        const storeName = rawStoreName !== undefined ? String(rawStoreName) : oldItem.store_name;
+        const rawPrice = req.body.priceCents ?? req.body.price_cents;
         const priceCents =
-          req.body.priceCents !== undefined
-            ? req.body.priceCents === null
+          rawPrice !== undefined
+            ? rawPrice === null
               ? null
-              : parseInt(String(req.body.priceCents), 10)
+              : parseInt(String(rawPrice), 10)
             : oldItem.price_cents;
-        const imageUrl =
-          req.body.imageUrl !== undefined ? String(req.body.imageUrl) : oldItem.image_url;
+        const rawImage = req.body.imageUrl ?? req.body.image_url;
+        const imageUrl = rawImage !== undefined ? String(rawImage) : oldItem.image_url;
         const notes = req.body.notes !== undefined ? String(req.body.notes) : oldItem.notes;
         const priority =
           req.body.priority === 'really_want' || req.body.priority === 'nice_to_have'
@@ -518,12 +521,14 @@ router.patch(
           req.body.quantity !== undefined
             ? Math.max(1, parseInt(String(req.body.quantity), 10) || 1)
             : oldItem.quantity;
+        const rawAllowDuplicates = req.body.allowDuplicates ?? req.body.allow_duplicates;
         const allowDuplicates =
-          req.body.allowDuplicates !== undefined
-            ? Boolean(req.body.allowDuplicates)
+          rawAllowDuplicates !== undefined
+            ? Boolean(rawAllowDuplicates)
             : oldItem.allow_duplicates;
+        const rawCatchAll = req.body.isCatchAll ?? req.body.is_catch_all;
         const isCatchAll =
-          req.body.isCatchAll !== undefined ? Boolean(req.body.isCatchAll) : oldItem.is_catch_all;
+          rawCatchAll !== undefined ? Boolean(rawCatchAll) : oldItem.is_catch_all;
 
         const updatedRes = await client.query<RawItemRow>(
           `UPDATE items
@@ -896,7 +901,7 @@ router.get(
  * Enable Thank-You Mode after an event.
  */
 router.post(
-  '/lists/:listId/reveal-thank-you',
+  ['/lists/:listId/reveal-thank-you', '/lists/:listId/thank-you-reveal'],
   requireFamilyAccess(['family_admin', 'member']),
   requireCsrf,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {

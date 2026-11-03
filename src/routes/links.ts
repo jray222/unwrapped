@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { config } from '../config.js';
 import { withSystemContext } from '../db/index.js';
 import { generateToken, hashToken } from '../security/crypto.js';
-import { tokenRateLimiter, setSessionCookie } from '../security/middleware.js';
+import { tokenRateLimiter, setSessionCookie, isRequestSecure } from '../security/middleware.js';
 import type { AuthenticatedRequest } from '../types.js';
 
 const router = Router();
@@ -145,7 +145,7 @@ router.get('/invite/:token', tokenRateLimiter, (req, res) => {
 
   res.cookie('unwrapped_pending_invite', rawToken, {
     httpOnly: true,
-    secure: config.isProd,
+    secure: isRequestSecure(res),
     sameSite: 'lax',
     path: '/',
     maxAge: 15 * 60 * 1000, // 15 minutes
@@ -170,7 +170,7 @@ router.get('/assisted/:token', tokenRateLimiter, (req, res) => {
 
   res.cookie('unwrapped_pending_assisted', rawToken, {
     httpOnly: true,
-    secure: config.isProd,
+    secure: isRequestSecure(res),
     sameSite: 'lax',
     path: '/',
     maxAge: 15 * 60 * 1000, // 15 minutes
