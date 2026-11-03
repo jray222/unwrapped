@@ -55,7 +55,7 @@ Unwrapped includes an in-process PostgreSQL engine (`@electric-sql/pglite`) with
 
 ```bash
 npm install
-npm test          # Runs the 44-test security & integration suite
+npm test          # Runs the 47-test security & integration suite
 npm run dev       # Starts server at http://localhost:3000
 ```
 
