@@ -409,13 +409,36 @@ function refreshActiveView() {
 // ==============================================================================
 
 async function checkCurrentSession() {
-  // Check for clean URL scrubbing on token redirects
-  if (window.location.pathname.startsWith('/g/') ||
-      window.location.pathname.startsWith('/a/') ||
-      window.location.pathname.startsWith('/invite/') ||
-      window.location.pathname.startsWith('/assisted/')) {
-    // If browser didn't follow server redirect, scrub now
+  // Extract token directly if browser navigated to /invite/:token or /assisted/:token before redirect
+  const path = window.location.pathname;
+  if (path.startsWith('/invite/')) {
+    state.pendingInviteToken = path.replace('/invite/', '').split(/[?#]/)[0];
+  } else if (path.startsWith('/assisted/')) {
+    state.pendingAssistedToken = path.replace('/assisted/', '').split(/[?#]/)[0];
+  }
+
+  const isInviteMode =
+    path.startsWith('/invite/') ||
+    path.startsWith('/assisted/') ||
+    window.location.search.includes('mode=invite') ||
+    window.location.search.includes('mode=assisted');
+
+  // Scrub token paths or mode query from browser address bar
+  if (
+    path.startsWith('/g/') ||
+    path.startsWith('/a/') ||
+    path.startsWith('/invite/') ||
+    path.startsWith('/assisted/') ||
+    isInviteMode
+  ) {
     window.history.replaceState({}, document.title, '/');
+  }
+
+  // Always check if there is a pending invite or assisted enrollment token first!
+  const hasInvite = await checkPendingInvite();
+  if (hasInvite) {
+    showView('view-auth');
+    return;
   }
 
   try {
@@ -426,12 +449,22 @@ async function checkCurrentSession() {
     }
 
     const data = await res.json();
+    if (!data.authenticated) {
+      handleUnauthenticatedRoute();
+      return;
+    }
+
     state.sessionKind = data.kind;
     state.csrfToken = data.csrfToken || '';
 
     if (data.kind === 'user' && data.user) {
       state.currentUser = data.user;
       state.memberships = data.memberships || [];
+      if (!data.user.mfa_enrolled) {
+        showView('view-auth');
+        startTotpEnrollment();
+        return;
+      }
       initUserInterface();
     } else if (data.kind === 'instance_admin') {
       initInstanceAdminInterface();
@@ -455,45 +488,106 @@ function handleUnauthenticatedRoute() {
     initAssignmentInterface();
   } else {
     showView('view-auth');
-    checkPendingInvite();
   }
+}
+
+async function openInviteWithToken(rawInput, forceAssisted = false) {
+  let cleaned = String(rawInput || '').trim();
+  if (!cleaned) return false;
+
+  let isAssisted = forceAssisted;
+  if (cleaned.includes('/assisted/')) {
+    cleaned = cleaned.split('/assisted/')[1].split(/[?#\s]/)[0];
+    isAssisted = true;
+  } else if (cleaned.includes('/invite/')) {
+    cleaned = cleaned.split('/invite/')[1].split(/[?#\s]/)[0];
+  } else {
+    cleaned = cleaned.split(/[?#\s]/)[0];
+  }
+
+  if (isAssisted) {
+    state.pendingAssistedToken = cleaned;
+    state.pendingInviteToken = null;
+  } else {
+    state.pendingInviteToken = cleaned;
+    state.pendingAssistedToken = null;
+  }
+
+  return renderInviteBannerForToken(cleaned, isAssisted);
+}
+
+async function renderInviteBannerForToken(tokenToQuery, isAssisted = false) {
+  try {
+    const infoRes = await apiFetch(`/api/auth/invite-info/${encodeURIComponent(tokenToQuery)}`);
+    if (!infoRes || !infoRes.ok) {
+      showToast('Invite link is invalid, expired, or has already been used.');
+      return false;
+    }
+    const info = await infoRes.json();
+
+    const banner = document.getElementById('subview-invite-accept');
+    const signInCard = document.getElementById('card-signin');
+    const title = document.getElementById('invite-welcome-title');
+    const desc = document.getElementById('invite-welcome-desc');
+    const emailGroup = document.getElementById('group-invite-email-display');
+    const emailInput = document.getElementById('accept-email-readonly');
+    const assistedGroup = document.getElementById('assisted-passkey-group');
+    const passwordForm = document.getElementById('form-accept-invite-password');
+
+    if (info.isAssistedEnrollment || isAssisted) {
+      state.pendingAssistedToken = tokenToQuery;
+      state.pendingInviteToken = null;
+    } else {
+      state.pendingInviteToken = tokenToQuery;
+      state.pendingAssistedToken = null;
+    }
+
+    if (banner && title && desc) {
+      title.textContent = `🎁 Welcome to the ${info.familyName || 'Family'} Wish List!`;
+      if (emailGroup && emailInput && info.email) {
+        emailInput.value = info.email;
+        emailGroup.style.display = 'block';
+      }
+      if (info.isAssistedEnrollment || isAssisted) {
+        desc.textContent = `Admin-assisted enrollment for ${info.email || 'you'}. Tap below to complete your setup!`;
+        if (assistedGroup) assistedGroup.style.display = 'block';
+        if (passwordForm) passwordForm.style.display = 'none';
+      } else {
+        desc.textContent = `You've been invited to join ${info.familyName || 'the family'} as a ${info.role === 'family_admin' ? 'Family Admin' : 'Family Member'}. Create your account below:`;
+        if (assistedGroup) assistedGroup.style.display = 'none';
+        if (passwordForm) passwordForm.style.display = 'block';
+      }
+      banner.style.display = 'block';
+      if (signInCard) signInCard.style.display = 'none';
+      setTimeout(() => document.getElementById('accept-first-name')?.focus(), 50);
+      return true;
+    }
+  } catch (_e) {
+    // Ignore error
+  }
+  return false;
 }
 
 async function checkPendingInvite() {
   try {
-    const res = await apiFetch('/api/links/pending');
-    if (!res || !res.ok) return;
-    const pending = await res.json();
-    const inviteToken = pending.inviteToken;
-    const assistedToken = pending.assistedToken;
+    let inviteToken = state.pendingInviteToken;
+    let assistedToken = state.pendingAssistedToken;
 
-    state.pendingInviteToken = inviteToken || null;
-    state.pendingAssistedToken = assistedToken || null;
+    if (!inviteToken && !assistedToken) {
+      const res = await apiFetch('/api/links/pending');
+      if (res && res.ok) {
+        const pending = await res.json();
+        inviteToken = pending.inviteToken || null;
+        assistedToken = pending.assistedToken || null;
+      }
+    }
 
     const tokenToQuery = inviteToken || assistedToken;
-    if (!tokenToQuery) return;
+    if (!tokenToQuery) return false;
 
-    const infoRes = await apiFetch(`/api/auth/invite-info/${tokenToQuery}`);
-    if (!infoRes || !infoRes.ok) return;
-    const info = await infoRes.json();
-
-    const banner = document.getElementById('subview-invite-accept');
-    const title = document.getElementById('invite-welcome-title');
-    const desc = document.getElementById('invite-welcome-desc');
-    const passkeyBtn = document.getElementById('btn-accept-with-passkey');
-
-    if (banner && title && desc) {
-      title.textContent = `🎁 Welcome to the ${info.familyName || 'Family'} Wish List!`;
-      if (info.isAssistedEnrollment || assistedToken) {
-        desc.textContent = `Admin-assisted enrollment for ${info.email || 'you'}. Tap below to complete your 1-tap passkey setup!`;
-        if (passkeyBtn) passkeyBtn.textContent = '🔑 Set Up 1-Tap Passkey (One Tap & Done!)';
-      } else {
-        desc.textContent = `You've been invited to join the ${info.familyName || 'family'} wish list as a ${info.role === 'family_admin' ? 'Family Admin' : 'Family Member'} (${info.email}).`;
-      }
-      banner.style.display = 'block';
-    }
+    return await renderInviteBannerForToken(tokenToQuery, Boolean(assistedToken));
   } catch (_e) {
-    // Ignore error
+    return false;
   }
 }
 
@@ -2123,7 +2217,7 @@ function bindEventListeners() {
         <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
           <h4>✅ 7-Day Invite Generated for ${email}</h4>
           <p class="form-hint">Send this single-use link to your relative:</p>
-          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;" onclick="this.select()">
+          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
           <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-invite">📋 Copy Link</button>
         </div>
       `;
@@ -2160,7 +2254,7 @@ function bindEventListeners() {
         <div class="card" style="background: var(--gold-100); border-color: var(--gold-500);">
           <h4>✨ 1-Tap Passkey Setup Link for ${firstName}</h4>
           <p class="form-hint">Your relative can tap this link on their phone to immediately enroll their FaceID/Fingerprint without entering any password!</p>
-          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;" onclick="this.select()">
+          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-assisted">📋 Copy Link</button>
             <a class="btn btn-secondary btn-sm" href="sms:?&body=${encodeURIComponent(`Hi ${firstName}! Tap this link to join our family gift list: ${url}`)}">💬 Send SMS</a>
@@ -2181,12 +2275,35 @@ function bindEventListeners() {
     }
   });
 
+  // Cancel Invite & Back to Sign In
+  document.getElementById('btn-cancel-invite')?.addEventListener('click', async () => {
+    state.pendingInviteToken = null;
+    state.pendingAssistedToken = null;
+    await apiFetch('/api/links/clear-pending', { method: 'POST' }).catch(() => {});
+    const banner = document.getElementById('subview-invite-accept');
+    const signInCard = document.getElementById('card-signin');
+    if (banner) banner.style.display = 'none';
+    if (signInCard) signInCard.style.display = 'block';
+  });
+
+  // Manual Invite Link / Token Redeem Form
+  document.getElementById('form-manual-invite')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = document.getElementById('input-manual-invite')?.value || '';
+    const ok = await openInviteWithToken(raw);
+    if (ok) {
+      document.getElementById('form-manual-invite')?.reset();
+    }
+  });
+
   // Instance Admin Triggers
   document.getElementById('btn-show-instance-admin')?.addEventListener('click', () => {
     openModal('modal-instance-login');
   });
 
-  document.getElementById('btn-exit-instance-admin')?.addEventListener('click', () => {
+  document.getElementById('btn-exit-instance-admin')?.addEventListener('click', async () => {
+    await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    resetAuthState();
     showView('view-auth');
   });
 
@@ -2231,16 +2348,22 @@ function bindEventListeners() {
         <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
           <h4>✅ Family "${name}" Created Successfully</h4>
           <p class="form-hint">Initial Admin Invite Link for ${adminEmail}:</p>
-          <input type="text" readonly value="${inviteUrl}" style="margin-bottom: 0.5rem;" onclick="this.select()">
+          <input type="text" readonly value="${inviteUrl}" style="margin-bottom: 0.5rem;">
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-family-invite">📋 Copy Invite</button>
-            <a href="${inviteUrl}" class="btn btn-primary btn-sm">👉 Open Invite &amp; Create Admin Account</a>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-open-family-invite">👉 Open Invite &amp; Create Admin Account</button>
           </div>
         </div>
       `;
       document.getElementById('btn-copy-family-invite')?.addEventListener('click', () => {
         navigator.clipboard.writeText(inviteUrl);
         showToast('Admin invite copied!');
+      });
+      document.getElementById('btn-open-family-invite')?.addEventListener('click', async () => {
+        await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+        resetAuthState();
+        showView('view-auth');
+        await openInviteWithToken(token);
       });
       document.getElementById('form-create-family').reset();
       loadInstanceAdminView();
@@ -2264,15 +2387,27 @@ window.addEventListener('DOMContentLoaded', async () => {
   loadOfflineQueue();
   bindEventListeners();
 
-  // Register Offline Service Worker
+  // Purge any legacy v1/v2 service worker caches and update SW immediately
+  if ('caches' in window) {
+    try {
+      const keys = await caches.keys();
+      for (const k of keys) {
+        if (k !== 'unwrapped-v2-shell-v3') {
+          await caches.delete(k);
+        }
+      }
+    } catch (_e) {}
+  }
+
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('/sw.js');
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      reg.update().catch(() => {});
     } catch (_e) {
       // Service worker registration error ignored
     }
   }
 
-  // Restore session
+  // Restore session or pending invite
   await checkCurrentSession();
 });

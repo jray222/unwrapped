@@ -66,33 +66,41 @@
       </div>
 
       <!-- Invite Acceptance / Assisted Enrollment Banner (When redirected from invite) -->
-      <div id="subview-invite-accept" class="card card-featured" style="display: none; border-top: 5px solid var(--gold-500);">
+      <div id="subview-invite-accept" class="card card-featured" style="display: none; border-top: 5px solid var(--gold-500); max-width: 540px; margin: 0 auto 2rem auto;">
         <h2 id="invite-welcome-title">🎁 You've Been Invited!</h2>
-        <p id="invite-welcome-desc">Join your family wish list with easy 1-tap passkey sign-in.</p>
-        
-        <div class="form-group">
+        <p id="invite-welcome-desc">Complete your account below to join your family wish list.</p>
+
+        <div id="assisted-passkey-group" class="form-group" style="display: none;">
           <button id="btn-accept-with-passkey" class="btn btn-festive btn-full" type="button">
-            🔑 Set Up 1-Tap Passkey (Easy &amp; Recommended)
+            🔑 Complete 1-Tap Passkey Setup
           </button>
         </div>
 
-        <div class="auth-divider">or create with password</div>
-
         <form id="form-accept-invite-password">
+          <div class="form-group" id="group-invite-email-display" style="display: none;">
+            <label for="accept-email-readonly">Invited Email Address</label>
+            <input type="email" id="accept-email-readonly" readonly style="background: var(--pine-100); font-weight: 600;">
+          </div>
           <div class="form-group">
-            <label for="accept-first-name">Your First Name</label>
-            <input type="text" id="accept-first-name" required autocomplete="given-name">
+            <label for="accept-first-name">Your First Name *</label>
+            <input type="text" id="accept-first-name" required autocomplete="given-name" placeholder="Jane">
           </div>
           <div class="form-group">
             <label for="accept-last-name">Your Last Name</label>
-            <input type="text" id="accept-last-name" autocomplete="family-name">
+            <input type="text" id="accept-last-name" autocomplete="family-name" placeholder="Doe">
           </div>
           <div class="form-group">
-            <label for="accept-password">Choose a Password</label>
-            <input type="password" id="accept-password" required minlength="8" autocomplete="new-password">
+            <label for="accept-password">Choose a Password (min 8 characters) *</label>
+            <input type="password" id="accept-password" required minlength="8" autocomplete="new-password" placeholder="••••••••">
           </div>
-          <button type="submit" class="btn btn-primary btn-full">Join Family</button>
+          <button type="submit" class="btn btn-primary btn-full">Create Account &amp; Set Up 2FA</button>
         </form>
+
+        <div style="margin-top: 1rem; text-align: center;">
+          <button type="button" id="btn-cancel-invite" class="btn btn-sm btn-secondary">
+            ← Back to Sign In
+          </button>
+        </div>
       </div>
 
       <!-- Main Sign-In Card -->
@@ -150,6 +158,13 @@
           </div>
 
           <button type="submit" id="btn-submit-login" class="btn btn-primary btn-full">Sign In</button>
+        </form>
+
+        <div class="auth-divider">have an invite link?</div>
+
+        <form id="form-manual-invite" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <input type="text" id="input-manual-invite" placeholder="Paste /invite/... link or token" style="flex: 1; min-width: 180px;" aria-label="Invite link or token">
+          <button type="submit" class="btn btn-gold btn-sm">Redeem Invite</button>
         </form>
 
         <div style="margin-top: 1.5rem; text-align: center;">

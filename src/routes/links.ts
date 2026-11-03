@@ -3,7 +3,12 @@ import { Router } from 'express';
 import { config } from '../config.js';
 import { withSystemContext } from '../db/index.js';
 import { generateToken, hashToken } from '../security/crypto.js';
-import { tokenRateLimiter, setSessionCookie, isRequestSecure } from '../security/middleware.js';
+import {
+  tokenRateLimiter,
+  setSessionCookie,
+  clearSessionCookie,
+  isRequestSecure,
+} from '../security/middleware.js';
 import type { AuthenticatedRequest } from '../types.js';
 
 const router = Router();
@@ -143,6 +148,9 @@ router.get('/invite/:token', tokenRateLimiter, (req, res) => {
     return;
   }
 
+  // Clear any active instance_admin or stale session so the invite onboarding screen loads cleanly
+  clearSessionCookie(res);
+
   res.cookie('unwrapped_pending_invite', rawToken, {
     httpOnly: true,
     secure: isRequestSecure(res),
@@ -167,6 +175,8 @@ router.get('/assisted/:token', tokenRateLimiter, (req, res) => {
     res.status(404).json({ error: 'Assisted token missing' });
     return;
   }
+
+  clearSessionCookie(res);
 
   res.cookie('unwrapped_pending_assisted', rawToken, {
     httpOnly: true,

@@ -1,5 +1,5 @@
-// Unwrapped v2 — Offline Service Worker
-const CACHE_NAME = 'unwrapped-v2-shell-v1';
+// Unwrapped v2 — Offline Service Worker (Network-First for App Shell)
+const CACHE_NAME = 'unwrapped-v2-shell-v3';
 
 const STATIC_SHELL_URLS = [
   '/',
@@ -15,7 +15,7 @@ const READONLY_API_ENDPOINTS = [
   '/api/assignment/view',
 ];
 
-// 1. Install Event: Precache static app shell
+// 1. Install Event: Precache static app shell and activate immediately
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -24,7 +24,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activate Event: Clean up outdated caches & claim control
+// 2. Activate Event: Clean up all older caches & claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -49,7 +49,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle SPA navigation requests: if offline, fall back to cached /index.html
+  // Never intercept token redemption routes (/g/, /a/, /invite/, /assisted/)
+  if (
+    url.pathname.startsWith('/g/') ||
+    url.pathname.startsWith('/a/') ||
+    url.pathname.startsWith('/invite/') ||
+    url.pathname.startsWith('/assisted/')
+  ) {
+    return;
+  }
+
+  // Handle SPA navigation requests: Network-First, fallback to cached /index.html only when offline
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -95,7 +105,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle static assets (CSS, JS, manifest, SVG, HTML)
+  // Handle static assets (CSS, JS, manifest, SVG, HTML): Network-First so updates apply immediately!
   if (
     request.method === 'GET' &&
     (url.pathname === '/' ||
@@ -106,24 +116,19 @@ self.addEventListener('fetch', (event) => {
       url.pathname.endsWith('.svg'))
   ) {
     event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        // Return cached response if found, while updating in background
-        const networkFetch = fetch(request)
-          .then(async (networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const cache = await caches.open(CACHE_NAME);
-              cache.put(request, networkResponse.clone());
-            }
-            return networkResponse;
-          })
-          .catch(() => cachedResponse);
-
-        return cachedResponse || networkFetch;
-      })
+      fetch(request)
+        .then(async (networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cachedResponse = await caches.match(request);
+          return cachedResponse;
+        })
     );
     return;
   }
-
-  // For state-changing mutations (POST/PUT/DELETE) or other API endpoints:
-  // Default network fetch. If offline, the request will fail and app.js will enqueue it.
 });
