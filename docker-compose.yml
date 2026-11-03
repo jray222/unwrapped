@@ -25,8 +25,8 @@ services:
       NODE_ENV: production
       PORT: "3000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-unwrapped_postgres_password}@db:5432/${POSTGRES_DB:-unwrapped}
-      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production-session-secret-32b}
-      BOOTSTRAP_INSTANCE_ADMIN_TOKEN: ${BOOTSTRAP_INSTANCE_ADMIN_TOKEN:-change-me-instance-admin-bootstrap-token}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      BOOTSTRAP_INSTANCE_ADMIN_TOKEN: ${BOOTSTRAP_INSTANCE_ADMIN_TOKEN:?Set BOOTSTRAP_INSTANCE_ADMIN_TOKEN in .env (copy .env.example and use a long random value)}
       WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Unwrapped Family Wish List}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
       APP_ORIGIN: ${APP_ORIGIN:-https://localhost:38443}

@@ -1,8 +1,10 @@
 import { config } from './config.js';
 import { initDb } from './db/index.js';
 import { createApp } from './app.js';
+import { assertProductionConfig } from './config-check.js';
 
 async function main() {
+  assertProductionConfig(config);
   await initDb();
   const app = createApp();
   app.listen(config.port, () => {
