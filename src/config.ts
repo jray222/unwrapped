@@ -16,7 +16,7 @@ export const config = {
   maxGuestLinkDays: 365,
   inviteExpiryDays: 7,
   reminderDaysBeforeEvent: 5,
-  autofillTimeoutMs: 5000,
+  autofillTimeoutMs: 10000,
   autofillMaxHtmlBytes: 1024 * 1024, // 1 MB
   autofillMaxImageBytes: 5 * 1024 * 1024, // 5 MB
   autofillMaxRedirects: 3,

@@ -1027,7 +1027,7 @@ async function handleAutofill() {
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/autofill`, {
       method: 'POST',
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, fetchImage: true }),
     });
 
     if (!res || res.status !== 200) {

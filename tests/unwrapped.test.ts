@@ -19,7 +19,7 @@ import {
   normalizeRecoveryCodeHash,
   hashToken,
 } from '../src/security/crypto.js';
-import { isPublicIp } from '../src/services/ssrf-autofill.js';
+import { isPublicIp, autofillProductUrl, BotWallError, FetchHttpError } from '../src/services/ssrf-autofill.js';
 import { sanitizeImageBuffer } from '../src/services/image-sanitizer.js';
 
 describe('Unwrapped v2 — Comprehensive Integration & Security Verification Suite', () => {
@@ -1257,8 +1257,41 @@ describe('Unwrapped v2 — Comprehensive Integration & Security Verification Sui
           .send({ url });
 
         expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/could not be safely fetched/i);
+        expect(res.body.error).toMatch(/for safety reasons/i);
       }
+    });
+
+    it('autofill parses only the first part of an oversized HTML page instead of failing', async () => {
+      const head = '<html><head><meta property="og:title" content="Big Page Product"><meta property="product:price:amount" content="19.99"></head><body>';
+      const padding = 'x'.repeat(2 * 1024 * 1024);
+      const customFetch = (async () =>
+        new Response(head + padding, { status: 200, headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+      const result = await autofillProductUrl('https://example.com/p/1', {
+        customResolver: async () => ['93.184.216.34'],
+        customFetch,
+      });
+      expect(result.name).toBe('Big Page Product');
+      expect(result.price_cents).toBe(1999);
+    });
+
+    it('autofill reports a bot-check page as BotWallError, not as a product', async () => {
+      const html = '<html><head><title>Robot or human?</title></head><body>Activate and hold the button to confirm that you are human.</body></html>';
+      await expect(
+        autofillProductUrl('https://example.com/p/1', {
+          customResolver: async () => ['93.184.216.34'],
+          htmlOverride: html,
+        })
+      ).rejects.toBeInstanceOf(BotWallError);
+    });
+
+    it('autofill surfaces HTTP 403 as FetchHttpError', async () => {
+      const customFetch = (async () => new Response('no', { status: 403, statusText: 'Forbidden' })) as unknown as typeof fetch;
+      await expect(
+        autofillProductUrl('https://example.com/p/1', {
+          customResolver: async () => ['93.184.216.34'],
+          customFetch,
+        })
+      ).rejects.toBeInstanceOf(FetchHttpError);
     });
 
     it('blocks guests from calling /autofill (403)', async () => {

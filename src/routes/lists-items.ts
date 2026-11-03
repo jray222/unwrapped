@@ -18,7 +18,13 @@ import {
   type RawPledgeRow,
   type RawAssignmentRow,
 } from '../security/surprise.js';
-import { autofillProductUrl, safeFetchBuffer } from '../services/ssrf-autofill.js';
+import {
+  autofillProductUrl,
+  safeFetchBuffer,
+  BotWallError,
+  FetchHttpError,
+  FetchTimeoutError,
+} from '../services/ssrf-autofill.js';
 import { sanitizeImageBuffer } from '../services/image-sanitizer.js';
 
 const router = Router({ mergeParams: true });
@@ -700,6 +706,22 @@ router.delete(
   }
 );
 
+function describeAutofillError(err: any, isSsrfBlocked: boolean): string {
+  const manual = 'You can enter the item details manually.';
+  if (isSsrfBlocked) return `That link can't be fetched for safety reasons. ${manual}`;
+  if (err instanceof BotWallError || (err instanceof FetchHttpError && [401, 403, 429, 503].includes(err.status))) {
+    return `That store blocks automatic lookups. ${manual}`;
+  }
+  if (err instanceof FetchHttpError && err.status === 404) {
+    return `That page wasn't found. Please double-check the link. ${manual}`;
+  }
+  if (err instanceof FetchTimeoutError) return `That store took too long to respond. ${manual}`;
+  if (typeof err?.message === 'string' && err.message.startsWith('No product details')) {
+    return `No product details were found on that page. ${manual}`;
+  }
+  return `That link could not be read. ${manual}`;
+}
+
 /**
  * POST /autofill
  * SSRF-safe URL metadata extraction.
@@ -796,9 +818,7 @@ router.post(
         });
       });
 
-      res.status(400).json({
-        error: 'URL could not be safely fetched. You can enter item details manually.',
-      });
+      res.status(400).json({ error: describeAutofillError(err, isSsrfBlocked) });
     }
   }
 );
