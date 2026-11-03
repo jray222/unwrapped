@@ -13,7 +13,7 @@ export async function handleClaimItem(itemId, quantity = 1) {
     });
 
     if (res && res.ok) {
-      showToast("🎁 Gift claimed by you! The recipient won't see until after the event.");
+      showToast("Gift claimed. The recipient won't see it until after the event.");
       selectWishList(state.currentListId);
     } else {
       const err = await res.json().catch(() => ({}));

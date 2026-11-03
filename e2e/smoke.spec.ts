@@ -79,7 +79,8 @@ test('sign in with password + 2FA, create a list, add an item, and use autofill'
   await expect(page.locator('#view-dashboard')).toBeVisible();
 
   // ---- Create a list ----
-  await page.click('#btn-open-create-list-modal');
+  // Phone shows the New list button in the page; desktop shows it in the sidebar
+  await page.locator('#btn-open-create-list-modal:visible, #btn-sidebar-new-list:visible').first().click();
   await page.fill('#list-name', 'Smoke Test List');
   await page.selectOption('#list-recipient-type', 'myself');
   await page.locator('#form-create-wishlist button[type="submit"]').click();
@@ -95,7 +96,8 @@ test('sign in with password + 2FA, create a list, add an item, and use autofill'
   await expect(page.locator('#view-dashboard')).toBeVisible();
 
   // ---- Autofill: stub the network response; assert UI wiring and the request body ----
-  await page.locator('#accordion-add-item > summary').click();
+  await page.click('#btn-open-add-item');
+  await expect(page.locator('#modal-add-item')).toBeVisible();
   let autofillBody: unknown = null;
   await page.route('**/api/families/*/autofill', async (route) => {
     autofillBody = route.request().postDataJSON();

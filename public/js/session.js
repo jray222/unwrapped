@@ -166,13 +166,13 @@ export async function renderInviteBannerForToken(tokenToQuery, isAssisted = fals
     }
 
     if (banner && title && desc) {
-      title.textContent = `🎁 Welcome to the ${info.familyName || 'Family'} Wish List!`;
+      title.textContent = `Welcome to the ${info.familyName || 'family'} wish lists`;
       if (emailGroup && emailInput && info.email) {
         emailInput.value = info.email;
         emailGroup.hidden = false;
       }
       if (info.isAssistedEnrollment || isAssisted) {
-        desc.textContent = `Admin-assisted enrollment for ${info.email || 'you'}. Tap below to complete your setup!`;
+        desc.textContent = `Setting up an account for ${info.email || 'you'}. Tap below to finish.`;
         if (assistedGroup) assistedGroup.hidden = false;
         if (passwordForm) passwordForm.hidden = true;
       } else {

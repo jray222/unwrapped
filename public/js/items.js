@@ -1,79 +1,110 @@
 /** Item card rendering. */
 import { state } from './state.js';
-import { openModal } from './ui.js';
+import { createOverflowMenu, icon, openModal } from './ui.js';
 import { handleClaimItem, handleReleaseClaim } from './gifts.js';
+
+function makeTag(text, cls = '', iconName = '') {
+  const tag = document.createElement('span');
+  tag.className = `tag ${cls}`.trim();
+  tag.innerHTML = iconName ? icon(iconName) : '';
+  tag.append(document.createTextNode(text));
+  return tag;
+}
+
+function dollars(cents, digits = 2) {
+  return `$${(cents / 100).toFixed(digits)}`;
+}
 
 export function createItemCard(item, { isTaken, isSurpriseProtected }) {
   const card = document.createElement('article');
-  card.className = `item-card ${item.priority === 'really_want' ? 'card-featured' : ''}`;
+  card.className = `item-card ${item.priority === 'really_want' ? 'is-featured' : ''}`.trim();
 
-  // Image
+  // Image (4:3) with a soft icon placeholder
   const imgWrapper = document.createElement('div');
   imgWrapper.className = 'item-image-wrapper';
+  const showPlaceholder = () => {
+    imgWrapper.innerHTML = `<span class="item-image-placeholder" aria-hidden="true">${icon('image')}</span>`;
+  };
   if (item.image_url) {
     const img = document.createElement('img');
     img.src = item.image_url;
     img.alt = item.name;
     img.className = 'item-image';
     img.loading = 'lazy';
-    img.onerror = () => {
-      imgWrapper.innerHTML = '<span class="item-image-placeholder" aria-hidden="true">🎁</span>';
-    };
+    img.onerror = showPlaceholder;
     imgWrapper.appendChild(img);
   } else {
-    imgWrapper.innerHTML = '<span class="item-image-placeholder" aria-hidden="true">🎁</span>';
+    showPlaceholder();
   }
   card.appendChild(imgWrapper);
 
-  // Details
   const details = document.createElement('div');
   details.className = 'item-details';
 
+  // Name + overflow menu
   const header = document.createElement('div');
   header.className = 'item-header';
-
   const title = document.createElement('h3');
   title.className = 'item-name';
   title.textContent = item.name;
   header.appendChild(title);
+
+  const openStore = () => {
+    if (isSurpriseProtected) {
+      window.open(item.store_url, '_blank', 'noopener,noreferrer');
+    } else if (isTaken) {
+      openModal('modal-already-taken', { item });
+    } else {
+      openModal('modal-store-prompt', { item });
+    }
+  };
+
+  // Overflow menu: Pledge / Assign / Open store / shopping cards.
+  // Pledge and Assign are giver-only, so they never exist on the recipient's own list.
+  const menuItems = [];
+  if (!isSurpriseProtected) {
+    menuItems.push({ label: 'Pledge toward this', icon: 'coins', onClick: () => openModal('modal-pledge', { item }) });
+    menuItems.push({ label: 'Assign to a relative', icon: 'user', onClick: () => openModal('modal-assign', { item }) });
+  }
+  if (item.store_url) {
+    menuItems.push({ label: 'Open store', icon: 'external-link', onClick: openStore });
+  }
+  const safeName = item.name.replace(/[^a-zA-Z0-9]/g, '_');
+  menuItems.push({
+    label: 'Shopping card (PDF)',
+    icon: 'download',
+    href: `/api/families/${state.currentFamilyId}/shopping-card.pdf?itemIds=${item.id}`,
+    download: `${safeName}_card.pdf`,
+  });
+  menuItems.push({
+    label: 'Shopping card (PNG)',
+    icon: 'download',
+    href: `/api/families/${state.currentFamilyId}/shopping-card.png?itemIds=${item.id}`,
+    download: `${safeName}_card.png`,
+  });
+  header.appendChild(createOverflowMenu(menuItems, `More actions for ${item.name}`));
   details.appendChild(header);
 
-  // Badges
-  const badges = document.createElement('div');
-  badges.className = 'item-badges';
-
-  if (item.priority === 'really_want') {
-    const pBadge = document.createElement('span');
-    pBadge.className = 'badge badge-really-want';
-    pBadge.textContent = '⭐ Really Want';
-    badges.appendChild(pBadge);
+  // Price and store
+  const priceStr = item.price_cents ? dollars(item.price_cents) : '';
+  const storeStr = item.store_name || (item.store_url ? 'Online store' : '');
+  const metaText = [priceStr, storeStr].filter(Boolean).join(' · ');
+  if (metaText) {
+    const meta = document.createElement('div');
+    meta.className = 'item-meta';
+    meta.textContent = metaText;
+    details.appendChild(meta);
   }
 
-  if (item.allow_duplicates) {
-    const dBadge = document.createElement('span');
-    dBadge.className = 'badge badge-nice-to-have';
-    dBadge.textContent = 'Duplicates Welcome';
-    badges.appendChild(dBadge);
-  }
+  // Tags
+  const tags = document.createElement('div');
+  tags.className = 'item-tags';
+  if (item.priority === 'really_want') tags.appendChild(makeTag('Really want', 'tag-really-want', 'star'));
+  if (item.quantity > 1) tags.appendChild(makeTag(`Qty ${item.quantity}`));
+  if (item.allow_duplicates) tags.appendChild(makeTag('Duplicates OK'));
+  if (isTaken && item.taken_label) tags.appendChild(makeTag(item.taken_label, 'tag-taken', 'check'));
+  if (tags.childElementCount) details.appendChild(tags);
 
-  if (isTaken && item.taken_label) {
-    const tBadge = document.createElement('span');
-    tBadge.className = 'badge badge-taken';
-    tBadge.textContent = `🎁 ${item.taken_label}`;
-    badges.appendChild(tBadge);
-  }
-
-  details.appendChild(badges);
-
-  // Meta (Price & Store)
-  const meta = document.createElement('div');
-  meta.className = 'item-meta';
-  const priceStr = item.price_cents ? `$${(item.price_cents / 100).toFixed(2)}` : '';
-  const storeStr = item.store_name || (item.store_url ? 'Online Store' : '');
-  meta.textContent = [priceStr, storeStr].filter(Boolean).join(' • ');
-  details.appendChild(meta);
-
-  // Notes
   if (item.notes) {
     const notes = document.createElement('div');
     notes.className = 'item-notes';
@@ -81,14 +112,13 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
     details.appendChild(notes);
   }
 
-  // Group Gift Pledge Progress Bar (Only visible if not surprise-protected and pledges exist)
+  // Group gift progress (never rendered on the recipient's own list)
   if (!isSurpriseProtected && item.price_cents && (item.total_pledged_cents > 0 || (item.pledges && item.pledges.length > 0))) {
     const pledgeBox = document.createElement('div');
     pledgeBox.className = 'pledge-bar-container';
 
     const track = document.createElement('div');
     track.className = 'pledge-progress-track';
-
     const fill = document.createElement('div');
     fill.className = 'pledge-progress-fill';
     fill.style.width = `${Math.min(100, item.pledge_progress_percent || 0)}%`;
@@ -97,89 +127,46 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
 
     const stats = document.createElement('div');
     stats.className = 'pledge-stats';
-    stats.innerHTML = `<span>🤝 $${((item.total_pledged_cents || 0) / 100).toFixed(0)} of $${(item.price_cents / 100).toFixed(0)} pledged</span><span>${item.pledge_progress_percent || 0}%</span>`;
+    stats.textContent = `${dollars(item.total_pledged_cents || 0, 0)} of ${dollars(item.price_cents, 0)} pledged`;
     pledgeBox.appendChild(stats);
 
     details.appendChild(pledgeBox);
   }
 
-  // Action Buttons
+  // One primary action
   const actions = document.createElement('div');
   actions.className = 'item-actions';
 
-  // 1. Store Link button (With "Are you getting this?" modal for givers, or "Buy anyway?" for taken)
-  if (item.store_url) {
-    const btnStore = document.createElement('button');
-    btnStore.type = 'button';
-    btnStore.className = 'btn btn-secondary btn-sm';
-    btnStore.textContent = '🛒 View in Store';
-    btnStore.addEventListener('click', () => {
-      if (isSurpriseProtected) {
-        window.open(item.store_url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-      if (isTaken) {
-        openModal('modal-already-taken', { item });
-      } else {
-        openModal('modal-store-prompt', { item });
-      }
-    });
-    actions.appendChild(btnStore);
-  }
-
-  // Giver Actions (Claim, Pledge, Assign) — ONLY when NOT Surprise Protected!
   if (!isSurpriseProtected) {
-    // Claim Button
     const myClaim = (item.claims || []).find((c) => c.is_mine);
     if (myClaim) {
       const btnRelease = document.createElement('button');
       btnRelease.type = 'button';
       btnRelease.className = 'btn btn-secondary btn-sm';
-      btnRelease.textContent = '↩️ Release Claim';
+      btnRelease.innerHTML = icon('undo');
+      btnRelease.append(document.createTextNode('Release'));
       btnRelease.addEventListener('click', () => handleReleaseClaim(myClaim.id));
       actions.appendChild(btnRelease);
     } else if (!isTaken || item.allow_duplicates) {
       const btnClaim = document.createElement('button');
       btnClaim.type = 'button';
       btnClaim.className = 'btn btn-primary btn-sm';
-      btnClaim.textContent = '🎁 Claim Gift';
+      btnClaim.innerHTML = icon('gift');
+      btnClaim.append(document.createTextNode('Claim'));
       btnClaim.addEventListener('click', () => handleClaimItem(item.id));
       actions.appendChild(btnClaim);
     }
-
-    // Group Pledge Button
-    const btnPledge = document.createElement('button');
-    btnPledge.type = 'button';
-    btnPledge.className = 'btn btn-primary btn-sm';
-    btnPledge.textContent = '🤝 Pledge $';
-    btnPledge.addEventListener('click', () => openModal('modal-pledge', { item }));
-    actions.appendChild(btnPledge);
-
-    // Assign to Relative Button
-    const btnAssign = document.createElement('button');
-    btnAssign.type = 'button';
-    btnAssign.className = 'btn btn-primary btn-sm';
-    btnAssign.textContent = '👤 Assign to Relative';
-    btnAssign.addEventListener('click', () => openModal('modal-assign', { item }));
-    actions.appendChild(btnAssign);
+  } else if (item.store_url) {
+    const btnStore = document.createElement('button');
+    btnStore.type = 'button';
+    btnStore.className = 'btn btn-secondary btn-sm';
+    btnStore.innerHTML = icon('external-link');
+    btnStore.append(document.createTextNode('Open store'));
+    btnStore.addEventListener('click', openStore);
+    actions.appendChild(btnStore);
   }
+  if (actions.childElementCount) details.appendChild(actions);
 
-  // Static Shopping Card Download Buttons (Available to everyone for offline shopping!)
-  const btnCardPdf = document.createElement('a');
-  btnCardPdf.href = `/api/families/${state.currentFamilyId}/shopping-card.pdf?itemIds=${item.id}`;
-  btnCardPdf.className = 'btn btn-secondary btn-sm';
-  btnCardPdf.textContent = '📄 PDF Card';
-  btnCardPdf.download = `${item.name.replace(/[^a-zA-Z0-9]/g, '_')}_card.pdf`;
-  actions.appendChild(btnCardPdf);
-
-  const btnCardPng = document.createElement('a');
-  btnCardPng.href = `/api/families/${state.currentFamilyId}/shopping-card.png?itemIds=${item.id}`;
-  btnCardPng.className = 'btn btn-secondary btn-sm';
-  btnCardPng.textContent = '🖼️ PNG Card';
-  btnCardPng.download = `${item.name.replace(/[^a-zA-Z0-9]/g, '_')}_card.png`;
-  actions.appendChild(btnCardPng);
-
-  details.appendChild(actions);
   card.appendChild(details);
   return card;
 }

@@ -5,31 +5,40 @@ import { closeActiveModal, openModal, showToast } from './ui.js';
 import { loadFamilyWishLists, selectWishList } from './lists.js';
 import { handleClaimItem } from './gifts.js';
 import { handleAutofill } from './autofill.js';
+import { navigate } from './router.js';
 
 export function bindListListeners() {
-  // Reveal Thank-You List Button
-  document.getElementById('btn-reveal-thank-you')?.addEventListener('click', async () => {
+  // Reveal givers (card button and overflow menu item)
+  const revealGivers = async () => {
     if (!state.currentListId) return;
-    if (confirm('Reveal givers for this list? This will unlock Thank-You mode.')) {
+    if (confirm('Reveal givers for this list? This turns on thank-you mode.')) {
       const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/reveal-thank-you`, {
         method: 'POST',
       });
       if (res && res.ok) {
-        showToast('🎁 Thank-You list revealed! See who claimed your gifts below.');
+        showToast('Givers revealed. See who claimed each gift below.');
         selectWishList(state.currentListId);
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err.error || 'Could not reveal thank-you list');
+        showToast(err.error || 'Could not reveal givers');
       }
     }
-  });
+  };
+  document.getElementById('btn-reveal-thank-you')?.addEventListener('click', revealGivers);
+  document.getElementById('btn-menu-reveal')?.addEventListener('click', revealGivers);
+
+  // Add item sheet and Share shortcut
+  document.getElementById('btn-open-add-item')?.addEventListener('click', () => openModal('modal-add-item'));
+  document.getElementById('btn-list-share')?.addEventListener('click', () => navigate('#/share'));
 
   // Price Filter Pills
   document.querySelectorAll('.filter-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('is-active'));
-      e.target.classList.add('is-active');
-      state.currentPriceFilter = e.target.getAttribute('data-filter') || 'all';
+      document.querySelectorAll('.filter-btn').forEach((b) => {
+        b.classList.toggle('is-active', b === e.currentTarget);
+        b.setAttribute('aria-pressed', String(b === e.currentTarget));
+      });
+      state.currentPriceFilter = e.currentTarget.getAttribute('data-filter') || 'all';
       if (state.currentListId) selectWishList(state.currentListId);
     });
   });
@@ -69,9 +78,9 @@ export function bindListListeners() {
     });
 
     if (res && res.ok) {
-      showToast('🎁 Item added to wish list!');
+      showToast('Item added to your list.');
       document.getElementById('form-add-item').reset();
-      document.getElementById('accordion-add-item').removeAttribute('open');
+      closeActiveModal();
       selectWishList(state.currentListId);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -125,7 +134,7 @@ export function bindListListeners() {
     });
 
     if (res && res.ok) {
-      showToast(`🤝 Pledged $${amountDollars}! Thank you for contributing.`);
+      showToast(`Pledged $${amountDollars}. Thank you for chipping in.`);
       selectWishList(state.currentListId);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -148,7 +157,7 @@ export function bindListListeners() {
     });
 
     if (res && res.ok) {
-      showToast(`👤 Item assigned to ${assigneeFirstName}!`);
+      showToast(`Assigned to ${assigneeFirstName}.`);
       selectWishList(state.currentListId);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -189,7 +198,7 @@ export function bindListListeners() {
     if (res && res.ok) {
       const data = await res.json();
       const newList = data.list || data;
-      showToast(`✨ Created wish list "${newList.name}"!`);
+      showToast(`Created "${newList.name}".`);
       loadFamilyWishLists(state.currentFamilyId);
     } else {
       const err = await res.json().catch(() => ({}));

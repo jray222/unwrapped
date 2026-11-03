@@ -135,10 +135,10 @@ export function bindAuthListeners() {
       if (step2) step2.hidden = false;
       if (codesBox && Array.isArray(data.recoveryCodes)) {
         codesBox.innerHTML = data.recoveryCodes
-          .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+          .map((c) => `<div class="recovery-code-pill">${c}</div>`)
           .join('');
       }
-      showToast('✅ 2FA successfully enabled!');
+      showToast('Two-step sign-in is on.');
     } else {
       const err = await res.json().catch(() => ({}));
       showToast(err.error || 'Invalid 6-digit verification code');
@@ -163,7 +163,7 @@ export function bindAuthListeners() {
           state.sessionKind = 'user';
           state.currentUser = data.user;
           state.csrfToken = data.csrfToken || '';
-          showToast('🎉 Passkey enrollment successful! Welcome to the family.');
+          showToast('Passkey set up. Welcome to the family.');
           if (data.recoveryCodes && data.recoveryCodes.length > 0) {
             const step1 = document.getElementById('totp-setup-step-1');
             const step2 = document.getElementById('totp-setup-step-2');
@@ -172,7 +172,7 @@ export function bindAuthListeners() {
             if (step2) step2.hidden = false;
             if (codesBox) {
               codesBox.innerHTML = data.recoveryCodes
-                .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+                .map((c) => `<div class="recovery-code-pill">${c}</div>`)
                 .join('');
             }
             openModal('modal-totp-enrollment');
@@ -243,6 +243,15 @@ export function bindAuthListeners() {
     const signInCard = document.getElementById('card-signin');
     if (banner) banner.hidden = true;
     if (signInCard) signInCard.hidden = false;
+  });
+
+  // Quiet "I have an invite link" toggle
+  document.getElementById('btn-toggle-manual-invite')?.addEventListener('click', (e) => {
+    const form = document.getElementById('form-manual-invite');
+    if (!form) return;
+    form.hidden = !form.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!form.hidden));
+    if (!form.hidden) document.getElementById('input-manual-invite')?.focus();
   });
 
   // Manual Invite Link / Token Redeem Form

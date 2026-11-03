@@ -1,7 +1,7 @@
 /** Wish list tabs and active list rendering. */
 import { state } from './state.js';
 import { apiFetch } from './api.js';
-import { openModal } from './ui.js';
+import { icon, openModal } from './ui.js';
 import { listIdFromHash, replaceHash } from './router.js';
 import { createItemCard } from './items.js';
 
@@ -41,7 +41,7 @@ export function renderListsTabs() {
       const chip = document.createElement('a');
       chip.href = href;
       chip.className = `list-tab-btn ${active ? 'is-active' : ''}`;
-      chip.textContent = `${list.name} (${recipient})`;
+      chip.textContent = recipient ? `${list.name} · ${recipient}` : list.name;
       if (active && dashboardActive) chip.setAttribute('aria-current', 'page');
       bar.appendChild(chip);
     }
@@ -105,16 +105,14 @@ export function renderActiveWishList() {
   );
   const isSurpriseProtected = isOwner && !list.thank_you_revealed;
 
-  // 1. Surprise Protection Banner
+  // 1. Header, surprise notice and reveal card
   const surpriseBanner = document.getElementById('surprise-rule-banner');
   const revealBox = document.getElementById('reveal-thank-you-box');
+  const canReveal = isOwner && !list.thank_you_revealed;
 
-  if (surpriseBanner) {
-    surpriseBanner.hidden = !(isSurpriseProtected);
-  }
-  if (revealBox) {
-    revealBox.hidden = !(isOwner && !list.thank_you_revealed);
-  }
+  renderListHeader(list, canReveal);
+  if (surpriseBanner) surpriseBanner.hidden = !isSurpriseProtected;
+  if (revealBox) revealBox.hidden = !canReveal;
 
   // 2. Render Items
   const availableContainer = document.getElementById('items-available-container');
@@ -146,16 +144,51 @@ export function renderActiveWishList() {
   }
 }
 
+/** "in 12 days", "tomorrow", "today", "3 days ago" from a YYYY-MM-DD (or ISO) date. */
+export function describeEventDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const today = new Date();
+  const days = Math.round((new Date(y, m - 1, d) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days === -1) return 'yesterday';
+  return days > 0 ? `in ${days} days` : `${-days} days ago`;
+}
+
+function renderListHeader(list, canReveal) {
+  const title = document.getElementById('current-list-title');
+  const sub = document.getElementById('current-list-subtitle');
+  const actions = document.getElementById('list-actions');
+  const overflow = document.getElementById('list-overflow');
+  if (title) title.textContent = list.name || 'Wish list';
+  if (sub) {
+    const count = (list.items || []).length;
+    const when = describeEventDate(list.event_date);
+    const who = list.recipient_first_name ? `For ${list.recipient_first_name}` : '';
+    const parts = [who && when ? `${who} · ${when}` : who || (when ? `Event ${when}` : ''), `${count} ${count === 1 ? 'item' : 'items'}`];
+    sub.textContent = parts.filter(Boolean).join(' · ');
+  }
+  if (actions) actions.hidden = false;
+  if (overflow) overflow.hidden = !canReveal;
+}
+
 export function renderEmptyListState() {
+  const title = document.getElementById('current-list-title');
+  const sub = document.getElementById('current-list-subtitle');
+  const actions = document.getElementById('list-actions');
+  if (title) title.textContent = 'Wish lists';
+  if (sub) sub.textContent = '';
+  if (actions) actions.hidden = true;
   const container = document.getElementById('items-available-container');
   if (container) {
     container.innerHTML = `
-      <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
-        <h3>No Wish Lists Yet!</h3>
-        <p>Start your holiday cheer by creating your family's first wish list!</p>
-        <button type="button" id="btn-create-first-list" class="btn btn-primary">
-          ✨ Create a Wish List
-        </button>
+      <div class="empty-state">
+        ${icon('gift')}
+        <h3>No wish lists yet</h3>
+        <p>Create your family's first wish list to get started.</p>
+        <button type="button" id="btn-create-first-list" class="btn btn-primary">Create a wish list</button>
       </div>
     `;
     document.getElementById('btn-create-first-list')?.addEventListener('click', () => {

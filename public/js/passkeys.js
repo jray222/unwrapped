@@ -136,7 +136,7 @@ export async function handlePasskeyRegister(deviceName = 'My Device') {
     });
 
     if (verifyRes && verifyRes.ok) {
-      showToast('🎉 Passkey successfully set up! You can now sign in with 1 tap.');
+      showToast('Passkey set up. You can now sign in with one tap.');
       checkCurrentSession();
     } else {
       startTotpEnrollment();
