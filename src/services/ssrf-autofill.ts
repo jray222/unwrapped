@@ -17,6 +17,37 @@ export class SsrfBlockedError extends Error {
   }
 }
 
+/** The remote site answered, but with an HTTP error status (e.g. 403 bot-block, 404). */
+export class FetchHttpError extends Error {
+  constructor(public status: number, statusText: string) {
+    super(`Fetch failed with HTTP status ${status} (${statusText})`);
+    this.name = 'FetchHttpError';
+  }
+}
+
+/** The fetch exceeded the configured timeout. */
+export class FetchTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Fetch timed out after ${timeoutMs}ms`);
+    this.name = 'FetchTimeoutError';
+  }
+}
+
+/** The site served a bot-check / captcha page instead of the product page. */
+export class BotWallError extends Error {
+  constructor(message = 'The site served a bot-check page instead of the product page.') {
+    super(message);
+    this.name = 'BotWallError';
+  }
+}
+
+/** Honest, identifiable request headers. We do not impersonate a browser to get past a site's bot protection. */
+const REQUEST_HEADERS: Record<string, string> = {
+  'User-Agent': 'Unwrapped/2.0 (self-hosted family wish list; product-autofill)',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/*;q=0.8,*/*;q=0.5',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 /**
  * Expands an IPv6 address string into 8 16-bit numerical hextets,
  * resolving double colons (::) and embedded IPv4 dotted quad notations.
@@ -327,6 +358,8 @@ export async function safeFetchBuffer(
     maxBytes?: number;
     timeoutMs?: number;
     maxRedirects?: number;
+    /** When true, stop reading at maxBytes and return what was read instead of throwing (for HTML, where metadata is near the top). */
+    truncate?: boolean;
     customResolver?: (hostname: string) => Promise<string[]>;
     customFetch?: typeof fetch;
   }
@@ -334,6 +367,7 @@ export async function safeFetchBuffer(
   const maxBytes = options?.maxBytes ?? config.autofillMaxHtmlBytes;
   const timeoutMs = options?.timeoutMs ?? config.autofillTimeoutMs;
   const maxRedirects = options?.maxRedirects ?? config.autofillMaxRedirects;
+  const truncate = options?.truncate ?? false;
   const customResolver = options?.customResolver;
   const fetchFn = options?.customFetch ?? fetch;
 
@@ -361,15 +395,12 @@ export async function safeFetchBuffer(
         method: 'GET',
         redirect: 'manual',
         signal: controller.signal,
-        headers: {
-          'User-Agent': 'Unwrapped/2.0 (+https://github.com/unwrapped; product-autofill)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/*;q=0.8,*/*;q=0.5',
-        },
+        headers: REQUEST_HEADERS,
       });
     } catch (err: any) {
       clearTimeout(timer);
       if (err.name === 'AbortError' || controller.signal.aborted) {
-        throw new Error(`Fetch timed out after ${timeoutMs}ms`);
+        throw new FetchTimeoutError(timeoutMs);
       }
       throw err;
     }
@@ -392,14 +423,14 @@ export async function safeFetchBuffer(
 
     if (!response.ok) {
       clearTimeout(timer);
-      throw new Error(`Fetch failed with HTTP status ${response.status} (${response.statusText})`);
+      throw new FetchHttpError(response.status, response.statusText);
     }
 
     // Check Content-Length header if present
     const clHeader = response.headers.get('content-length');
     if (clHeader) {
       const cl = parseInt(clHeader, 10);
-      if (!isNaN(cl) && cl > maxBytes) {
+      if (!truncate && !isNaN(cl) && cl > maxBytes) {
         clearTimeout(timer);
         throw new Error(`Payload size ${cl} exceeds maximum limit of ${maxBytes} bytes`);
       }
@@ -420,6 +451,10 @@ export async function safeFetchBuffer(
               totalBytes += value.length;
               if (totalBytes > maxBytes) {
                 await reader.cancel();
+                if (truncate) {
+                  chunks.push(Buffer.from(value.subarray(0, value.length - (totalBytes - maxBytes))));
+                  break;
+                }
                 throw new Error(`Payload size exceeded limit of ${maxBytes} bytes`);
               }
               chunks.push(Buffer.from(value));
@@ -430,10 +465,10 @@ export async function safeFetchBuffer(
         }
       } else {
         const ab = await response.arrayBuffer();
-        if (ab.byteLength > maxBytes) {
+        if (ab.byteLength > maxBytes && !truncate) {
           throw new Error(`Payload size exceeded limit of ${maxBytes} bytes`);
         }
-        chunks.push(Buffer.from(ab));
+        chunks.push(Buffer.from(ab).subarray(0, maxBytes));
       }
       clearTimeout(timer);
       return {
@@ -491,6 +526,9 @@ function parsePriceToCents(raw: any): number | null {
   return Math.round(val * 100);
 }
 
+const BOT_WALL_PATTERN =
+  /robot or human|are you a (human|robot)|captcha|access denied|just a moment|verify you are (a )?human|unusual traffic|pardon our interruption/i;
+
 function cleanText(text: string | null | undefined): string {
   if (!text) return '';
   return text
@@ -530,6 +568,7 @@ export async function autofillProductUrl(
       maxBytes: config.autofillMaxHtmlBytes,
       timeoutMs: config.autofillTimeoutMs,
       maxRedirects: config.autofillMaxRedirects,
+      truncate: true,
       customResolver: options?.customResolver,
       customFetch: options?.customFetch,
     });
@@ -657,6 +696,14 @@ export async function autofillProductUrl(
         image_url = null;
       }
     }
+  }
+
+  const foundProductData = jsonLdName !== null || Boolean(ogTitle) || price_cents !== null;
+  if (!foundProductData && BOT_WALL_PATTERN.test(`${pageTitle} ${$('body').text().slice(0, 2000)}`)) {
+    throw new BotWallError();
+  }
+  if (!cleanName) {
+    throw new Error('No product details found on that page.');
   }
 
   return {

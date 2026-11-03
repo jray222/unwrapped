@@ -11,6 +11,7 @@ import {
 } from '../security/middleware.js';
 import type { AuthenticatedRequest } from '../types.js';
 
+import { safeEqual } from '../config-check.js';
 const router = Router();
 
 /**
@@ -20,7 +21,7 @@ const router = Router();
 router.post('/login', authRateLimiter, async (req: AuthenticatedRequest, res, next) => {
   try {
     const { token } = req.body || {};
-    if (!token || typeof token !== 'string' || token !== config.bootstrapInstanceAdminToken) {
+    if (!token || typeof token !== 'string' || !safeEqual(token, config.bootstrapInstanceAdminToken)) {
       res.status(401).json({ error: 'Invalid instance admin token' });
       return;
     }

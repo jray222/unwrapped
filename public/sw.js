@@ -1,11 +1,30 @@
 // Unwrapped v2 — Offline Service Worker (Network-First for App Shell)
-const CACHE_NAME = 'unwrapped-v2-shell-v3';
+const CACHE_NAME = 'unwrapped-v2-shell-v4';
 
 const STATIC_SHELL_URLS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/app.js',
+  '/js/admin.js',
+  '/js/api.js',
+  '/js/assignments.js',
+  '/js/autofill.js',
+  '/js/gifts.js',
+  '/js/guest.js',
+  '/js/items.js',
+  '/js/listeners-admin.js',
+  '/js/listeners-auth.js',
+  '/js/listeners-lists.js',
+  '/js/lists.js',
+  '/js/main.js',
+  '/js/notifications.js',
+  '/js/offline.js',
+  '/js/passkeys.js',
+  '/js/qr.js',
+  '/js/session.js',
+  '/js/share-links.js',
+  '/js/state.js',
+  '/js/ui.js',
   '/manifest.json',
   '/icon.svg',
 ];
