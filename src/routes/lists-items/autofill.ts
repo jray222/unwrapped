@@ -56,7 +56,8 @@ export function registerAutofillRoutes(router: Router): void {
 
       try {
         const result = await autofillProductUrl(url.trim(), {
-          htmlOverride: mockHtml,
+          // `mockHtml` is a test hook: never honour client-supplied HTML in production.
+          htmlOverride: config.isProd ? undefined : mockHtml,
         });
         let finalImageUrl = result.image_url || '';
 

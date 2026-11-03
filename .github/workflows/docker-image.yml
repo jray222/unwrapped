@@ -53,6 +53,8 @@ jobs:
           cp docker-compose.yml /tmp/prod-stack-smoke/docker-compose.yml
           cd /tmp/prod-stack-smoke
           sed -i 's/pull_policy: always/pull_policy: never/' docker-compose.yml
+          # Production refuses to start without a real admin token; use a throwaway one for the smoke test.
+          export BOOTSTRAP_INSTANCE_ADMIN_TOKEN="$(openssl rand -hex 24)"
           docker compose up -d --no-build
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:38180/api/health >/dev/null \
