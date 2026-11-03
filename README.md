@@ -60,12 +60,17 @@ npm run dev       # Starts server at http://localhost:3000
 ```
 
 ### 2. Run in Production with Docker Compose & Automatic HTTPS
-The `docker-compose.yml` stack starts PostgreSQL 16, the Unwrapped server, and Caddy for automatic HTTPS:
+The `docker-compose.yml` stack pulls `ghcr.io/jray222/unwrapped:latest` (`pull_policy: always`, built and published by GitHub Actions on every merge to `main` and whenever `node:22-bookworm-slim` updates via `base-image-update.yml`) alongside PostgreSQL 16 and Caddy for automatic HTTPS:
 
 ```bash
 cp .env.example .env
 # Edit .env to set SESSION_SECRET, BOOTSTRAP_INSTANCE_ADMIN_TOKEN, and POSTGRES_PASSWORD
-docker compose up -d --build
+docker compose up -d
+```
+
+To build the image from your local checkout instead of pulling from GHCR:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 - **HTTP**: `http://localhost:38180`
 - **HTTPS**: `https://localhost:38443`

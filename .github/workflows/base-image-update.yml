@@ -1,0 +1,40 @@
+# Daily check for a new node:22-bookworm-slim base image. Does nothing (and sends no emails)
+# unless the base image changed since the published image was built; then it
+# starts "Test and publish image" on main, which tests and publishes as usual.
+name: Base image update check
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  packages: read
+
+jobs:
+  check:
+    name: Check for a new base image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare base image digests
+        id: cmp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GH_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          base=$(docker buildx imagetools inspect node:22-bookworm-slim --format '{{json .Manifest.Digest}}' | tr -d '"')
+          built=$(docker buildx imagetools inspect ghcr.io/${{ github.repository }}:latest \
+            --format '{{json .Image}}' 2>/dev/null | grep -o 'unwrapped.base-digest":"[^"]*' | head -1 | cut -d'"' -f3 || true)
+          echo "base=$base built=$built"
+          if [ -n "$built" ] && [ "$base" = "$built" ]; then
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Rebuild and publish
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-image.yml --repo "${{ github.repository }}" --ref main

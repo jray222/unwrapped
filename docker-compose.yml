@@ -15,10 +15,11 @@ services:
       retries: 10
 
   app:
+    # Built and published by GitHub Actions on every merge to main
+    # (.github/workflows/docker-image.yml). To build from this checkout instead:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     image: ghcr.io/jray222/unwrapped:latest
-    build:
-      context: .
-      target: prod
+    pull_policy: always
     restart: unless-stopped
     environment:
       NODE_ENV: production

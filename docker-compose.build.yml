@@ -1,0 +1,9 @@
+# Build the image from this checkout instead of pulling it from GitHub:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    image: unwrapped:local
+    pull_policy: build

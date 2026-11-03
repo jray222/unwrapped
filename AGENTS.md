@@ -68,11 +68,13 @@ unwrapped/
 ├── AGENTS.md                        # LLM handoff & architectural invariant guide
 ├── README.md                        # Setup, deployment, security, and API documentation
 ├── Dockerfile                       # Production container (target: prod)
-├── docker-compose.yml               # Self-contained PostgreSQL 16 + App + Caddy HTTPS stack
+├── docker-compose.yml               # Production stack pulling ghcr.io/jray222/unwrapped:latest (pull_policy: always)
+├── docker-compose.build.yml         # Local build override (docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build)
 ├── Caddyfile                        # Standalone Caddy reverse proxy config
 ├── .env.example                     # Template for environment variables (no secrets in repo)
 ├── .github/workflows/
-│   └── docker-image.yml             # CI test + Docker smoke-test + GHCR image build/push
+│   ├── docker-image.yml             # CI test + Docker smoke-test + multi-arch GHCR build/push with GHA cache & base-digest label
+│   └── base-image-update.yml        # Daily 09:00 UTC check for node:22-bookworm-slim base image updates
 ├── package.json                     # Dependencies and scripts
 ├── tsconfig.json                    # TypeScript configuration
 ├── src/
@@ -117,4 +119,5 @@ unwrapped/
 - **Run TypeScript typecheck**: `npm run build`
 - **Start local development server**: `npm run dev` (listens on `http://localhost:3000`)
 - **Build production Docker image**: `docker build --target prod -t ghcr.io/jray222/unwrapped:latest .`
-- **Start production Docker Compose stack**: `docker compose up -d --build` (HTTP on `http://localhost:38180`, HTTPS on `https://localhost:38443`)
+- **Start production Docker Compose stack (pulls from GHCR)**: `docker compose up -d` (HTTP on `http://localhost:38180`, HTTPS on `https://localhost:38443`)
+- **Start Docker Compose stack built from local checkout**: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`
