@@ -23,6 +23,7 @@ import {
   type ShoppingCardItem,
 } from '../services/shopping-card.js';
 
+import { HttpError } from '../errors.js';
 interface DbClaimRow extends RawClaimRow {
   list_id: string;
   family_id: string;
@@ -118,9 +119,7 @@ router.post(
 
         // CRITICAL SURPRISE RULE: Recipient cannot claim items on their own wish list
         if (req.auth?.user && list.recipient_user_id === req.auth.user.id) {
-          const forbiddenErr = new Error('Cannot claim items on your own wish list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Cannot claim items on your own wish list');
         }
 
         // Guest list restriction check
@@ -142,9 +141,7 @@ router.post(
           );
           const currentClaimed = claimCountRes.rows[0].count;
           if (currentClaimed + quantity > item.quantity) {
-            const conflictErr = new Error('Item is already claimed');
-            (conflictErr as any).status = 409;
-            throw conflictErr;
+            throw new HttpError(409, 'Item is already claimed');
           }
         }
 
@@ -257,9 +254,7 @@ const releaseClaimHandler = async (req: AuthenticatedRequest, res: Response, nex
         claim.claimer_guest_link_id === req.auth.guestLink.id;
 
       if (!isFamilyAdmin && !isOwnerUser && !isOwnerGuest) {
-        const forbiddenErr = new Error('Not authorized to release this claim');
-        (forbiddenErr as any).status = 403;
-        throw forbiddenErr;
+        throw new HttpError(403, 'Not authorized to release this claim');
       }
 
       if (claim.assignment_id) {
@@ -356,9 +351,7 @@ router.patch(
           c.claimer_guest_link_id === req.auth.guestLink.id;
 
         if (!isFamilyAdmin && !isOwnerUser && !isOwnerGuest) {
-          const forbiddenErr = new Error('Not authorized to update this claim');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Not authorized to update this claim');
         }
 
         const updRes = await client.query<RawClaimRow>(
@@ -428,9 +421,7 @@ router.post(
 
         // CRITICAL SURPRISE RULE: Recipient cannot pledge toward items on their own wish list
         if (req.auth?.user && list.recipient_user_id === req.auth.user.id) {
-          const forbiddenErr = new Error('Cannot pledge toward items on your own wish list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Cannot pledge toward items on your own wish list');
         }
 
         let pledgerUserId: string | null = null;
@@ -554,9 +545,7 @@ router.post(
 
           // Cannot assign items on own wish list
           if (list.recipient_user_id === currentUser.id) {
-            const forbiddenErr = new Error('Cannot assign items on your own wish list');
-            (forbiddenErr as any).status = 403;
-            throw forbiddenErr;
+            throw new HttpError(403, 'Cannot assign items on your own wish list');
           }
 
           const assignmentId = randomUUID();
@@ -689,9 +678,7 @@ const updateAssignmentHandler = async (req: AuthenticatedRequest, res: Response,
       }
 
       if (!authorized) {
-        const forbiddenErr = new Error('Access denied');
-        (forbiddenErr as any).status = 403;
-        throw forbiddenErr;
+        throw new HttpError(403, 'Access denied');
       }
 
       let updatedAssignment: RawAssignmentRow;

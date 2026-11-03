@@ -27,6 +27,7 @@ import {
 } from '../services/ssrf-autofill.js';
 import { sanitizeImageBuffer } from '../services/image-sanitizer.js';
 
+import { HttpError } from '../errors.js';
 const router = Router({ mergeParams: true });
 
 /**
@@ -340,9 +341,7 @@ router.post(
           list.recipient_user_id !== currentUser.id &&
           !isFamilyAdmin
         ) {
-          const forbiddenErr = new Error('Permission denied to manage items on this list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Permission denied to manage items on this list');
         }
 
         const itemId = randomUUID();
@@ -432,9 +431,7 @@ router.patch(
           list.recipient_user_id !== currentUser.id &&
           !isFamilyAdmin
         ) {
-          const forbiddenErr = new Error('Permission denied to manage items on this list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Permission denied to manage items on this list');
         }
 
         const itemRes = await client.query<RawItemRow>(
@@ -499,9 +496,7 @@ router.patch(
         }
 
         if (req.body.name !== undefined && !String(req.body.name).trim()) {
-          const badReqErr = new Error('Item name cannot be empty');
-          (badReqErr as any).status = 400;
-          throw badReqErr;
+          throw new HttpError(400, 'Item name cannot be empty');
         }
 
         const name = req.body.name !== undefined ? String(req.body.name).trim() : oldItem.name;
@@ -619,9 +614,7 @@ router.delete(
           list.recipient_user_id !== currentUser.id &&
           !isFamilyAdmin
         ) {
-          const forbiddenErr = new Error('Permission denied to manage items on this list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Permission denied to manage items on this list');
         }
 
         const itemRes = await client.query<RawItemRow>(
@@ -945,9 +938,7 @@ router.post(
           list.recipient_user_id !== currentUser.id &&
           !isFamilyAdmin
         ) {
-          const forbiddenErr = new Error('Permission denied to reveal thank-you mode on this list');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Permission denied to reveal thank-you mode on this list');
         }
 
         const updatedRes = await client.query(
@@ -1059,9 +1050,7 @@ router.patch(
           list.recipient_user_id !== currentUser.id &&
           !isFamilyAdmin
         ) {
-          const forbiddenErr = new Error('Permission denied to update thank-you tracking');
-          (forbiddenErr as any).status = 403;
-          throw forbiddenErr;
+          throw new HttpError(403, 'Permission denied to update thank-you tracking');
         }
 
         if (type === 'claim') {
