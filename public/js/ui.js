@@ -1,17 +1,17 @@
 /** Toasts, modals, and view switching. */
 import { state } from './state.js';
 
+export function icon(name, cls = '') {
+  return `<svg class="icon ${cls}" aria-hidden="true"><use href="/icons.svg#${name}"></use></svg>`;
+}
+
 export function showToast(msg) {
-  const existing = document.querySelector('.toast-banner');
+  const existing = document.querySelector('.toast');
   if (existing) existing.remove();
 
   const toast = document.createElement('div');
-  toast.className = 'toast-banner notification-card';
-  toast.style.position = 'fixed';
-  toast.style.bottom = '20px';
-  toast.style.right = '20px';
-  toast.style.zIndex = '2000';
-  toast.style.maxWidth = '360px';
+  toast.className = 'toast';
+  toast.setAttribute('role', 'status');
   toast.textContent = msg;
 
   document.body.appendChild(toast);

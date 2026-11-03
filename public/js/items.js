@@ -150,7 +150,7 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
     // Group Pledge Button
     const btnPledge = document.createElement('button');
     btnPledge.type = 'button';
-    btnPledge.className = 'btn btn-gold btn-sm';
+    btnPledge.className = 'btn btn-primary btn-sm';
     btnPledge.textContent = '🤝 Pledge $';
     btnPledge.addEventListener('click', () => openModal('modal-pledge', { item }));
     actions.appendChild(btnPledge);
@@ -158,7 +158,7 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
     // Assign to Relative Button
     const btnAssign = document.createElement('button');
     btnAssign.type = 'button';
-    btnAssign.className = 'btn btn-festive btn-sm';
+    btnAssign.className = 'btn btn-primary btn-sm';
     btnAssign.textContent = '👤 Assign to Relative';
     btnAssign.addEventListener('click', () => openModal('modal-assign', { item }));
     actions.appendChild(btnAssign);

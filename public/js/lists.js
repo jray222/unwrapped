@@ -123,7 +123,7 @@ export function renderEmptyListState() {
       <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
         <h3>No Wish Lists Yet!</h3>
         <p>Start your holiday cheer by creating your family's first wish list!</p>
-        <button type="button" id="btn-create-first-list" class="btn btn-gold">
+        <button type="button" id="btn-create-first-list" class="btn btn-primary">
           ✨ Create a Wish List
         </button>
       </div>

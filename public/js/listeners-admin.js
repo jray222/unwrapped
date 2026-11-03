@@ -57,7 +57,7 @@ export function bindAdminListeners() {
         ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
         : `${window.location.origin}/invite/${token}`;
       document.getElementById('invite-result-box').innerHTML = `
-        <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
+        <div class="card card-tinted">
           <h4>✅ 7-Day Invite Generated for ${email}</h4>
           <p class="form-hint">Send this single-use link to your relative:</p>
           <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
@@ -94,7 +94,7 @@ export function bindAdminListeners() {
         ? (data.assistedUrl.startsWith('http') ? data.assistedUrl : `${window.location.origin}${data.assistedUrl}`)
         : `${window.location.origin}/assisted/${token}`;
       document.getElementById('assisted-result-box').innerHTML = `
-        <div class="card" style="background: var(--gold-100); border-color: var(--gold-500);">
+        <div class="card card-tinted">
           <h4>✨ 1-Tap Passkey Setup Link for ${firstName}</h4>
           <p class="form-hint">Your relative can tap this link on their phone to immediately enroll their FaceID/Fingerprint without entering any password!</p>
           <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
@@ -167,7 +167,7 @@ export function bindAdminListeners() {
         ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
         : `${window.location.origin}/invite/${token}`;
       document.getElementById('create-family-result').innerHTML = `
-        <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
+        <div class="card card-tinted">
           <h4>✅ Family "${name}" Created Successfully</h4>
           <p class="form-hint">Initial Admin Invite Link for ${adminEmail}:</p>
           <input type="text" readonly value="${inviteUrl}" style="margin-bottom: 0.5rem;">

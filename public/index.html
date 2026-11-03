@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <meta name="theme-color" content="#1B4332">
+  <meta name="theme-color" content="#1E4D3A">
   <meta name="description" content="Cozy, private, and surprise-safe family gift wish list with offline shopping support.">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="stylesheet" href="/styles.css">
-  <title>Unwrapped — Family Wish List</title>
+  <title>Unwrapped — Family wish lists</title>
 </head>
 <body>
 
   <!-- Offline Status & Pending Sync Banner -->
   <aside id="offline-banner" role="status" aria-live="polite">
     <div class="offline-content">
-      <span>⚠️ <strong>You are offline.</strong> Changes you make are saved on this phone.</span>
+      <span><strong>You are offline.</strong> Changes you make are saved on this phone.</span>
       <span id="offline-queue-badge" class="offline-badge">0 pending</span>
-      <button id="btn-sync-now" class="btn-sync-now" type="button">Sync Now</button>
-      <span class="offline-tip">📱 Tip: Save static Shopping Cards (PDF/PNG) to your phone for shopping in stores with zero cell reception!</span>
+      <button id="btn-sync-now" class="btn-sync-now" type="button">Sync now</button>
+      <span class="offline-tip">Tip: save a Shopping Card (PDF or PNG) to your phone so you can shop in stores without a signal.</span>
     </div>
   </aside>
 
@@ -29,7 +29,7 @@
   <header id="app-header">
     <div class="header-container">
       <a href="/" class="brand-wrapper" id="brand-link">
-        <span class="brand-icon" aria-hidden="true">🎁</span>
+        <span class="brand-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg></span>
         <span class="brand-title">Unwrapped</span>
         <span class="brand-badge" id="app-badge">Cozy</span>
       </a>
@@ -37,16 +37,16 @@
       <!-- Header Controls (Visible when logged in) -->
       <div class="header-controls" id="header-user-controls" style="display: none;">
         <div class="family-select-wrapper" id="family-select-wrapper">
-          <label for="family-selector" class="sr-only" style="display:none;">Select Family</label>
-          <select id="family-selector" class="family-dropdown" aria-label="Select Family"></select>
+          <label for="family-selector" class="sr-only">Select family</label>
+          <select id="family-selector" class="family-dropdown" aria-label="Select family"></select>
         </div>
 
         <nav class="nav-links" aria-label="Primary Navigation">
-          <button id="nav-wishlists" class="nav-btn active" type="button">🎁 Wish Lists</button>
-          <button id="nav-assignments" class="nav-btn" type="button">🛒 Assignments</button>
-          <button id="nav-links" class="nav-btn" type="button">🔗 Share Links</button>
-          <button id="nav-admin" class="nav-btn" type="button" style="display: none;">👥 Family Admin</button>
-          <button id="nav-logout" class="nav-btn nav-btn-logout" type="button">🚪 Sign Out</button>
+          <button id="nav-wishlists" class="nav-btn active" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg> Wish lists</button>
+          <button id="nav-assignments" class="nav-btn" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#shopping-bag"/></svg> Shopping</button>
+          <button id="nav-links" class="nav-btn" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#share"/></svg> Share</button>
+          <button id="nav-admin" class="nav-btn" type="button" style="display: none;"><svg class="icon" aria-hidden="true"><use href="/icons.svg#users"/></svg> Family</button>
+          <button id="nav-logout" class="nav-btn nav-btn-logout" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#log-out"/></svg> Sign out</button>
         </nav>
       </div>
     </div>
@@ -58,79 +58,79 @@
     <!-- ====================================================================
          VIEW 1: Authentication & Onboarding
          ==================================================================== -->
-    <section id="view-auth" class="view-panel is-active" aria-label="Sign In View">
+    <section id="view-auth" class="view-panel is-active" aria-label="Sign in">
       <div class="auth-hero">
-        <div class="auth-hero-icon" aria-hidden="true">🎄</div>
+        <div class="auth-hero-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg></div>
         <h1>Welcome to Unwrapped</h1>
-        <p>A cheerful, private family gift list where surprise protection is strictly guaranteed!</p>
+        <p>A private family gift list that keeps every surprise safe.</p>
       </div>
 
       <!-- Invite Acceptance / Assisted Enrollment Banner (When redirected from invite) -->
-      <div id="subview-invite-accept" class="card card-featured" style="display: none; border-top: 5px solid var(--gold-500); max-width: 540px; margin: 0 auto 2rem auto;">
-        <h2 id="invite-welcome-title">🎁 You've Been Invited!</h2>
-        <p id="invite-welcome-desc">Complete your account below to join your family wish list.</p>
+      <div id="subview-invite-accept" class="card max-540" style="display: none;">
+        <h2 id="invite-welcome-title">You've been invited</h2>
+        <p id="invite-welcome-desc">Finish setting up your account to join your family wish list.</p>
 
         <div id="assisted-passkey-group" class="form-group" style="display: none;">
-          <button id="btn-accept-with-passkey" class="btn btn-festive btn-full" type="button">
-            🔑 Complete 1-Tap Passkey Setup
+          <button id="btn-accept-with-passkey" class="btn btn-primary btn-full" type="button">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#key"/></svg> Finish setup with a passkey
           </button>
         </div>
 
         <form id="form-accept-invite-password">
           <div class="form-group" id="group-invite-email-display" style="display: none;">
-            <label for="accept-email-readonly">Invited Email Address</label>
-            <input type="email" id="accept-email-readonly" readonly style="background: var(--pine-100); font-weight: 600;">
+            <label for="accept-email-readonly">Invited email address</label>
+            <input type="email" id="accept-email-readonly" readonly>
           </div>
           <div class="form-group">
-            <label for="accept-first-name">Your First Name *</label>
+            <label for="accept-first-name">Your first name *</label>
             <input type="text" id="accept-first-name" required autocomplete="given-name" placeholder="Jane">
           </div>
           <div class="form-group">
-            <label for="accept-last-name">Your Last Name</label>
+            <label for="accept-last-name">Your last name</label>
             <input type="text" id="accept-last-name" autocomplete="family-name" placeholder="Doe">
           </div>
           <div class="form-group">
-            <label for="accept-password">Choose a Password (min 8 characters) *</label>
+            <label for="accept-password">Choose a password (at least 8 characters) *</label>
             <input type="password" id="accept-password" required minlength="8" autocomplete="new-password" placeholder="••••••••">
           </div>
-          <button type="submit" class="btn btn-primary btn-full">Create Account &amp; Set Up 2FA</button>
+          <button type="submit" class="btn btn-primary btn-full">Create account and set up two-step sign-in</button>
         </form>
 
-        <div style="margin-top: 1rem; text-align: center;">
-          <button type="button" id="btn-cancel-invite" class="btn btn-sm btn-secondary">
-            ← Back to Sign In
+        <div class="stack-top centered">
+          <button type="button" id="btn-cancel-invite" class="btn btn-sm btn-ghost">
+            Back to sign in
           </button>
         </div>
       </div>
 
       <!-- Main Sign-In Card -->
       <div id="card-signin" class="card auth-card">
-        <h2>Sign In to Your Family</h2>
-        <p>Choose your preferred sign-in method:</p>
+        <h2>Sign in to your family</h2>
+        <p>Choose how you would like to sign in.</p>
 
         <!-- Passkey 1-Tap Login -->
         <div class="form-group">
-          <button id="btn-passkey-login" class="btn btn-festive btn-full" type="button">
-            🔑 Sign in with Passkey (Easy 1-Tap)
+          <button id="btn-passkey-login" class="btn btn-primary btn-full" type="button">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#key"/></svg> Sign in with a passkey
           </button>
-          <div class="form-hint" style="text-align: center; margin-top: 0.35rem;">
-            Works with Apple FaceID, TouchID, and Android Fingerprint
+          <div class="form-hint hint-centered">
+            Works with Face ID, Touch ID, and Android fingerprint
           </div>
         </div>
 
         <!-- Google Sign-In -->
         <div class="form-group">
           <button id="btn-google-login" class="btn btn-secondary btn-full" type="button">
-            🌐 Sign in with Google
+            Sign in with Google
           </button>
         </div>
 
-        <div class="auth-divider">or with email and password</div>
+        <div class="auth-divider">or use email and password</div>
 
         <!-- Email & Password Form -->
         <form id="form-login">
           <div class="form-group">
-            <label for="input-email">Email Address</label>
+            <label for="input-email">Email address</label>
             <input type="email" id="input-email" required autocomplete="username" placeholder="grandma@example.com">
           </div>
 
@@ -140,36 +140,36 @@
           </div>
 
           <!-- Multi-Factor Authentication Step (Hidden until password verified) -->
-          <div id="mfa-step" style="display: none; background: var(--bg-cream); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
-            <h3>🔐 Two-Factor Verification</h3>
-            <p>Please enter your 6-digit authenticator code or an 8-character recovery code.</p>
+          <div id="mfa-step" class="mfa-step" style="display: none;">
+            <h3>Two-step verification</h3>
+            <p>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
             
             <div class="form-group">
-              <label for="input-totp-code">6-Digit Code</label>
+              <label for="input-totp-code">6-digit code</label>
               <input type="text" id="input-totp-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="123456">
             </div>
 
             <div class="form-group">
-              <label for="input-recovery-code">Or Recovery Code</label>
+              <label for="input-recovery-code">Or a recovery code</label>
               <input type="text" id="input-recovery-code" placeholder="XXXX-XXXX">
             </div>
 
-            <button type="button" id="btn-verify-mfa" class="btn btn-primary btn-full">Verify &amp; Sign In</button>
+            <button type="button" id="btn-verify-mfa" class="btn btn-primary btn-full">Verify and sign in</button>
           </div>
 
-          <button type="submit" id="btn-submit-login" class="btn btn-primary btn-full">Sign In</button>
+          <button type="submit" id="btn-submit-login" class="btn btn-primary btn-full">Sign in</button>
         </form>
 
         <div class="auth-divider">have an invite link?</div>
 
-        <form id="form-manual-invite" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <input type="text" id="input-manual-invite" placeholder="Paste /invite/... link or token" style="flex: 1; min-width: 180px;" aria-label="Invite link or token">
-          <button type="submit" class="btn btn-gold btn-sm">Redeem Invite</button>
+        <form id="form-manual-invite" class="inline-form">
+          <input type="text" id="input-manual-invite" class="grow" placeholder="Paste your invite link" aria-label="Invite link or token">
+          <button type="submit" class="btn btn-primary btn-sm">Use invite</button>
         </form>
 
-        <div style="margin-top: 1.5rem; text-align: center;">
-          <button type="button" id="btn-show-instance-admin" class="btn btn-sm btn-secondary">
-            🛡️ Server Administrator Login
+        <div class="stack-top-lg centered">
+          <button type="button" id="btn-show-instance-admin" class="btn btn-sm btn-ghost">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#shield"/></svg> Server administrator sign in
           </button>
         </div>
       </div>
@@ -178,15 +178,15 @@
     <!-- ====================================================================
          VIEW 2: Member & Family Admin Dashboard (Wish Lists)
          ==================================================================== -->
-    <section id="view-dashboard" class="view-panel" aria-label="Wish Lists View">
+    <section id="view-dashboard" class="view-panel" aria-label="Wish lists">
       <div class="dash-header">
         <div>
-          <h1 id="current-family-title">Family Wish Lists</h1>
+          <h1 id="current-family-title">Family wish lists</h1>
           <p id="current-user-role-text">Member of this family</p>
         </div>
         <div>
-          <button id="btn-open-create-list-modal" class="btn btn-gold" type="button">
-            ✨ + Create Wish List
+          <button id="btn-open-create-list-modal" class="btn btn-primary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#plus"/></svg> Create wish list
           </button>
         </div>
       </div>
@@ -199,26 +199,26 @@
 
         <!-- Surprise Rule Active Banner (When viewing own list) -->
         <div id="surprise-rule-banner" class="surprise-banner" style="display: none;">
-          <div class="surprise-banner-icon" aria-hidden="true">🎁</div>
+          <div class="surprise-banner-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#lock"/></svg></div>
           <div class="surprise-banner-text">
-            <h4>Surprise Protection Active!</h4>
-            <p>This is your wish list. All claims, pledges, and secret assignments by your family are completely hidden so your holiday surprises remain intact!</p>
+            <h4>Surprise protection is on</h4>
+            <p>This is your wish list. Claims, pledges, and shopping assignments from your family stay hidden so your gifts remain a surprise.</p>
           </div>
         </div>
 
         <!-- Reveal Thank-You List Box (When viewing own list after event) -->
         <div id="reveal-thank-you-box" class="reveal-box" style="display: none;">
-          <h3>🎄 Event Has Passed! Ready for Thank-You Notes?</h3>
-          <p>Unlocking Thank-You mode will reveal who claimed or contributed to each gift so you can send warm thank-you messages.</p>
-          <button id="btn-reveal-thank-you" class="btn btn-festive" type="button">
-            🎁 Reveal Givers &amp; Thank-You List
+          <h3>The event has passed. Ready for thank-you notes?</h3>
+          <p>Thank-you mode shows who claimed or contributed to each gift so you can thank them.</p>
+          <button id="btn-reveal-thank-you" class="btn btn-primary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg> Reveal givers
           </button>
         </div>
 
         <!-- Price Range Filter Bar -->
-        <div class="filter-bar" role="toolbar" aria-label="Price Filters">
-          <span class="filter-label">Filter Price:</span>
-          <button class="filter-btn is-active" data-filter="all" type="button">All Items</button>
+        <div class="filter-bar" role="toolbar" aria-label="Price filters">
+          <span class="filter-label">Price:</span>
+          <button class="filter-btn is-active" data-filter="all" type="button">All items</button>
           <button class="filter-btn" data-filter="under25" type="button">Under $25</button>
           <button class="filter-btn" data-filter="25to50" type="button">$25–$50</button>
           <button class="filter-btn" data-filter="50to100" type="button">$50–$100</button>
@@ -226,80 +226,80 @@
         </div>
 
         <!-- Add Item Accordion / Form -->
-        <details class="card card-featured" id="accordion-add-item" style="margin-bottom: 1.5rem;">
-          <summary style="font-size: 1.25rem; font-weight: 700; color: var(--pine-800); cursor: pointer; padding: 0.5rem 0;">
-            ✨ + Add an Item to This Wish List
+        <details class="card add-item-card" id="accordion-add-item">
+          <summary class="add-item-summary">
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#plus"/></svg> Add an item to this list
           </summary>
 
-          <div style="margin-top: 1rem;">
-            <!-- SSRF-Safe Auto-Fill Section -->
-            <div style="background: var(--bg-cream); border: 1px solid var(--border-subtle); padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.25rem;">
-              <label for="input-autofill-url">Paste a Product Link to Auto-Fill Details</label>
-              <p class="form-hint">Paste an Amazon, Target, Best Buy, or any store URL to auto-fill name, price, photo, and store name!</p>
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                <input type="url" id="input-autofill-url" placeholder="https://www.target.com/p/..." style="flex: 1; min-width: 240px;">
+          <div class="add-item-body">
+            <!-- Auto-fill from a product link -->
+            <div class="autofill-box">
+              <label for="input-autofill-url">Paste a product link to fill in the details</label>
+              <p class="form-hint">Paste a link from any store and we will fill in the name, price, photo, and store.</p>
+              <div class="inline-form">
+                <input type="url" id="input-autofill-url" class="grow-wide" placeholder="https://www.target.com/p/...">
                 <button type="button" id="btn-autofill" class="btn btn-secondary">
-                  ✨ Auto-Fill Details
+                  <svg class="icon" aria-hidden="true"><use href="/icons.svg#sparkles"/></svg> Fill in details
                 </button>
               </div>
-              <div id="autofill-status" style="font-size: 0.95rem; margin-top: 0.35rem; font-weight: 600;"></div>
+              <div id="autofill-status" class="autofill-status"></div>
             </div>
 
             <!-- Manual Item Fields Form -->
             <form id="form-add-item">
               <div class="form-group">
-                <label for="item-name">Item Name *</label>
+                <label for="item-name">Item name *</label>
                 <input type="text" id="item-name" required placeholder="Cozy Wool Slippers">
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+              <div class="field-grid">
                 <div class="form-group">
-                  <label for="item-price">Estimated Price ($)</label>
+                  <label for="item-price">Estimated price ($)</label>
                   <input type="number" id="item-price" step="0.01" min="0" placeholder="39.99">
                 </div>
                 <div class="form-group">
-                  <label for="item-store-name">Store Name</label>
+                  <label for="item-store-name">Store name</label>
                   <input type="text" id="item-store-name" placeholder="Target, Amazon, Local...">
                 </div>
               </div>
 
               <div class="form-group">
-                <label for="item-store-url">Store URL</label>
+                <label for="item-store-url">Store link</label>
                 <input type="url" id="item-store-url" placeholder="https://...">
               </div>
 
               <div class="form-group">
-                <label for="item-image-url">Image URL</label>
+                <label for="item-image-url">Image link</label>
                 <input type="url" id="item-image-url" placeholder="https://.../photo.jpg">
               </div>
 
               <div class="form-group">
-                <label for="item-notes">Notes / Size / Color Preferences</label>
+                <label for="item-notes">Notes, size, or color</label>
                 <textarea id="item-notes" placeholder="Size 9 Mens, Grey color preferred"></textarea>
               </div>
 
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+              <div class="field-grid field-grid-sm">
                 <div class="form-group">
                   <label for="item-priority">Priority</label>
                   <select id="item-priority">
-                    <option value="really_want">Really Want ⭐</option>
-                    <option value="nice_to_have" selected>Nice to Have</option>
+                    <option value="really_want">Really want</option>
+                    <option value="nice_to_have" selected>Nice to have</option>
                   </select>
                 </div>
 
                 <div class="form-group">
-                  <label for="item-quantity">Quantity Desired</label>
+                  <label for="item-quantity">Quantity wanted</label>
                   <input type="number" id="item-quantity" min="1" value="1">
                 </div>
               </div>
 
-              <div class="checkbox-group" style="margin-bottom: 1.25rem;">
+              <div class="checkbox-group">
                 <input type="checkbox" id="item-allow-duplicates">
                 <label for="item-allow-duplicates">Any duplicates are fine (e.g. socks, gift cards, books)</label>
               </div>
 
               <button type="submit" id="btn-submit-item" class="btn btn-primary btn-full">
-                Add to Wish List
+                Add to wish list
               </button>
             </form>
           </div>
@@ -311,8 +311,8 @@
         <!-- Collapsed "Already Taken" Accordion -->
         <details id="already-taken-accordion" class="already-taken-accordion" style="display: none;">
           <summary class="already-taken-summary">
-            <span>🎁 Already Taken (<span id="already-taken-count">0</span> gifts)</span>
-            <span aria-hidden="true">▼</span>
+            <span><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg> Already taken (<span id="already-taken-count">0</span> gifts)</span>
+            <svg class="icon" aria-hidden="true"><use href="/icons.svg#chevron-down"/></svg>
           </summary>
           <div class="already-taken-content" id="items-taken-container"></div>
         </details>
@@ -323,11 +323,11 @@
     <!-- ====================================================================
          VIEW 3: My Assignments & Shopping Cards
          ==================================================================== -->
-    <section id="view-assignments" class="view-panel" aria-label="Shopping Assignments View">
+    <section id="view-assignments" class="view-panel" aria-label="Shopping">
       <div class="dash-header">
         <div>
-          <h1>🛒 My Shopping Assignments</h1>
-          <p>Gifts you've promised to buy or that family members asked you to pick up.</p>
+          <h1>My shopping</h1>
+          <p>Gifts you promised to buy, or that family members asked you to pick up.</p>
         </div>
       </div>
 
@@ -337,27 +337,27 @@
     <!-- ====================================================================
          VIEW 4: Share Links (Guest & Assignment Links)
          ==================================================================== -->
-    <section id="view-share-links" class="view-panel" aria-label="Share Links View">
+    <section id="view-share-links" class="view-panel" aria-label="Share">
       <div class="dash-header">
         <div>
-          <h1>🔗 Share Wish Lists With Family &amp; Guests</h1>
-          <p>Send zero-footprint links via SMS, print QR codes, or share via phone share sheet.</p>
+          <h1>Share lists</h1>
+          <p>Send private links by text message, print a QR code, or use your phone's share menu.</p>
         </div>
       </div>
 
       <!-- Guest Links Section -->
       <div class="card">
-        <h2>Guest Links</h2>
-        <p>Allow friends or distant relatives to view lists and claim gifts without creating an account.</p>
+        <h2>Guest links</h2>
+        <p>Let friends and distant relatives view lists and claim gifts without an account.</p>
 
-        <form id="form-create-guest-link" style="margin-bottom: 1.5rem;">
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 220px;">
-              <label for="guest-first-name">Guest First Name *</label>
+        <form id="form-create-guest-link" class="form-spaced">
+          <div class="inline-form">
+            <div class="grow">
+              <label for="guest-first-name">Guest first name *</label>
               <input type="text" id="guest-first-name" required placeholder="Aunt Linda">
             </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button type="submit" class="btn btn-primary">Create Guest Link</button>
+            <div class="align-end">
+              <button type="submit" class="btn btn-primary">Create guest link</button>
             </div>
           </div>
         </form>
@@ -366,18 +366,18 @@
       </div>
 
       <!-- Assignment Links Section -->
-      <div class="card" style="margin-top: 1.5rem;">
-        <h2>Assignment Links</h2>
-        <p>Give less-technical relatives a direct link to see only their assigned shopping tasks.</p>
+      <div class="card card-spaced">
+        <h2>Shopping links</h2>
+        <p>Give a relative a simple link that shows only the gifts they are shopping for.</p>
 
-        <form id="form-create-assignment-link" style="margin-bottom: 1.5rem;">
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 220px;">
-              <label for="assignee-first-name">Assignee First Name *</label>
+        <form id="form-create-assignment-link" class="form-spaced">
+          <div class="inline-form">
+            <div class="grow">
+              <label for="assignee-first-name">Shopper first name *</label>
               <input type="text" id="assignee-first-name" required placeholder="Grandpa Joe">
             </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button type="submit" class="btn btn-primary">Create Assignment Link</button>
+            <div class="align-end">
+              <button type="submit" class="btn btn-primary">Create shopping link</button>
             </div>
           </div>
         </form>
@@ -389,64 +389,64 @@
     <!-- ====================================================================
          VIEW 5: Family Admin Panel
          ==================================================================== -->
-    <section id="view-family-admin" class="view-panel" aria-label="Family Admin View">
+    <section id="view-family-admin" class="view-panel" aria-label="Family">
       <div class="dash-header">
         <div>
-          <h1>👥 Family Administration</h1>
-          <p>Manage members, invitations, assisted passkey enrollment, and audit logs.</p>
+          <h1>Family</h1>
+          <p>Manage members, invitations, passkey setup, and the activity log.</p>
         </div>
       </div>
 
       <!-- Invite Member Form -->
       <div class="card">
-        <h2>Invite a Family Member</h2>
-        <p>Invites are single-use, 7-day tokens hashed at rest for high security.</p>
+        <h2>Invite a family member</h2>
+        <p>Each invite link works once and expires after 7 days.</p>
         <form id="form-invite-member">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+          <div class="field-grid field-grid-lg mb">
             <div>
-              <label for="invite-email">Member Email *</label>
+              <label for="invite-email">Email *</label>
               <input type="email" id="invite-email" required placeholder="unclebob@example.com">
             </div>
             <div>
-              <label for="invite-role">Family Role</label>
+              <label for="invite-role">Role</label>
               <select id="invite-role">
-                <option value="member" selected>Family Member</option>
-                <option value="family_admin">Family Admin</option>
+                <option value="member" selected>Member</option>
+                <option value="family_admin">Admin</option>
               </select>
             </div>
           </div>
-          <button type="submit" class="btn btn-primary">Generate 7-Day Invite</button>
+          <button type="submit" class="btn btn-primary">Create invite</button>
         </form>
-        <div id="invite-result-box" style="margin-top: 1rem;"></div>
+        <div id="invite-result-box" class="result-box"></div>
       </div>
 
       <!-- Admin-Assisted Passkey Enrollment for Less-Technical Relatives -->
-      <div class="card card-featured" style="margin-top: 1.5rem; border-top: 4px solid var(--gold-500);">
-        <h2>✨ Admin-Assisted Passkey Enrollment</h2>
-        <p>Help an older or less-technical relative sign up with 1-tap passkeys without passwords or complicated steps.</p>
+      <div class="card card-spaced">
+        <h2>Passkey setup for a relative</h2>
+        <p>Help a relative join with a one-tap passkey. No password to remember.</p>
         <form id="form-assisted-enrollment">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+          <div class="field-grid field-grid-sm mb">
             <div>
-              <label for="assisted-first-name">Relative First Name *</label>
+              <label for="assisted-first-name">First name *</label>
               <input type="text" id="assisted-first-name" required placeholder="Grandma">
             </div>
             <div>
-              <label for="assisted-last-name">Last Name</label>
+              <label for="assisted-last-name">Last name</label>
               <input type="text" id="assisted-last-name" placeholder="Smith">
             </div>
             <div>
-              <label for="assisted-email">Email Address *</label>
+              <label for="assisted-email">Email *</label>
               <input type="email" id="assisted-email" required placeholder="grandma@example.com">
             </div>
           </div>
-          <button type="submit" class="btn btn-festive">Generate Assisted 1-Tap Setup Link</button>
+          <button type="submit" class="btn btn-primary">Create setup link</button>
         </form>
-        <div id="assisted-result-box" style="margin-top: 1rem;"></div>
+        <div id="assisted-result-box" class="result-box"></div>
       </div>
 
       <!-- Family Members Management -->
-      <div class="card" style="margin-top: 1.5rem;">
-        <h2>Family Members</h2>
+      <div class="card card-spaced">
+        <h2>Members</h2>
         <div class="table-responsive">
           <table>
             <thead>
@@ -463,14 +463,14 @@
       </div>
 
       <!-- Family Audit Log -->
-      <div class="card" style="margin-top: 1.5rem;">
-        <h2>Family Audit Log</h2>
-        <p class="form-hint">Filtered strictly by PostgreSQL and the Surprise Rule so recipients never see gift claims.</p>
+      <div class="card card-spaced">
+        <h2>Activity log</h2>
+        <p class="form-hint">Recent family activity. Gift claims are never shown to the person they are for.</p>
         <div class="table-responsive">
           <table>
             <thead>
               <tr>
-                <th>Date / Time</th>
+                <th>Date and time</th>
                 <th>Actor</th>
                 <th>Action</th>
               </tr>
@@ -484,11 +484,11 @@
     <!-- ====================================================================
          VIEW 6: Guest Dedicated View (/guest)
          ==================================================================== -->
-    <section id="view-guest" class="view-panel" aria-label="Guest Wish List View">
+    <section id="view-guest" class="view-panel" aria-label="Guest wish list">
       <div class="dash-header">
         <div>
-          <h1>Welcome, <span id="guest-first-name-text">Guest</span>! 🎁</h1>
-          <p>You can claim items, pledge toward group gifts, and coordinate with the family.</p>
+          <h1>Welcome, <span id="guest-first-name-text">Guest</span></h1>
+          <p>Claim items, chip in on group gifts, and coordinate with the family.</p>
         </div>
       </div>
 
@@ -498,11 +498,11 @@
     <!-- ====================================================================
          VIEW 7: Assignment Dedicated View (/assignment)
          ==================================================================== -->
-    <section id="view-assignment" class="view-panel" aria-label="Assignment Shopping View">
+    <section id="view-assignment" class="view-panel" aria-label="Shopping tasks">
       <div class="dash-header">
         <div>
-          <h1>Shopping Tasks for <span id="assignee-first-name-text">You</span> 🛒</h1>
-          <p>Here are your assigned gifts. Tap <strong>"I Bought This"</strong> when purchased!</p>
+          <h1>Shopping for <span id="assignee-first-name-text">You</span></h1>
+          <p>Here are the gifts you are shopping for. Tap <strong>I bought this</strong> when you have one.</p>
         </div>
       </div>
 
@@ -512,50 +512,48 @@
     <!-- ====================================================================
          VIEW 8: Instance Administrator Console
          ==================================================================== -->
-    <section id="view-instance-admin" class="view-panel" aria-label="Instance Admin View">
+    <section id="view-instance-admin" class="view-panel" aria-label="Server administration">
       <div class="dash-header">
         <div>
-          <h1>🛡️ Instance Administrator Console</h1>
-          <p>Manage families and system health.</p>
+          <h1>Server administration</h1>
+          <p>Create and manage families on this server.</p>
         </div>
         <div>
           <button id="btn-exit-instance-admin" class="btn btn-secondary" type="button">
-            Back to App
+            Back to app
           </button>
         </div>
       </div>
 
-      <div class="card" style="background: var(--pine-100); border: 2px solid var(--pine-600);">
-        <h3>🛡️ Content-Blind Architecture Policy</h3>
-        <p style="margin-bottom: 0;">
-          Notice: By architectural design and database role permissions (<code>app_instance_admin</code>), the Instance Admin is completely blind to family wish lists, items, gift claims, pledges, and secret notes.
-        </p>
+      <div class="card card-tinted">
+        <h3>Privacy</h3>
+        <p class="p-flush">You can manage families but can't see their lists or gifts.</p>
       </div>
 
-      <div class="card" style="margin-top: 1.5rem;">
-        <h2>Create a New Family</h2>
+      <div class="card card-spaced">
+        <h2>Create a family</h2>
         <form id="form-create-family">
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+          <div class="field-grid mb">
             <div>
-              <label for="family-name">Family Name *</label>
+              <label for="family-name">Family name *</label>
               <input type="text" id="family-name" required placeholder="Smith Family">
             </div>
             <div>
-              <label for="family-slug">Family Slug (URL safe) *</label>
+              <label for="family-slug">Short name (letters and dashes) *</label>
               <input type="text" id="family-slug" required placeholder="smith-family">
             </div>
             <div>
-              <label for="family-admin-email">Initial Admin Email *</label>
+              <label for="family-admin-email">First admin email *</label>
               <input type="email" id="family-admin-email" required placeholder="admin@smith.com">
             </div>
           </div>
-          <button type="submit" class="btn btn-primary">Create Family &amp; Generate Invite</button>
+          <button type="submit" class="btn btn-primary">Create family and invite admin</button>
         </form>
-        <div id="create-family-result" style="margin-top: 1rem;"></div>
+        <div id="create-family-result" class="result-box"></div>
       </div>
 
-      <div class="card" style="margin-top: 1.5rem;">
-        <h2>Existing Families</h2>
+      <div class="card card-spaced">
+        <h2>Existing families</h2>
         <div id="instance-families-list" class="links-list"></div>
       </div>
     </section>
@@ -571,16 +569,16 @@
     <div id="modal-store-prompt" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-store-prompt-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-store-prompt-title">🎁 Are You Getting This Gift?</h3>
+          <h3 id="modal-store-prompt-title">Are you getting this gift?</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
-        <p>Would you like to claim this gift now so other family members know it is being purchased?</p>
+        <p>Claim it now so the rest of the family knows it is taken.</p>
         <div class="modal-actions">
           <button type="button" id="btn-modal-just-looking" class="btn btn-secondary">
-            👀 Just Looking (Open Store)
+            Just looking (open store)
           </button>
           <button type="button" id="btn-modal-claim-store" class="btn btn-primary">
-            🎁 Yes, Mark as Claimed &amp; Open Store
+            Claim it and open store
           </button>
         </div>
       </div>
@@ -590,16 +588,16 @@
     <div id="modal-already-taken" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-already-taken-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-already-taken-title">⚠️ Gift Already Taken</h3>
+          <h3 id="modal-already-taken-title">Gift already taken</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
-        <p id="modal-already-taken-text">This gift has already been claimed by a family member. Are you sure you want to view the store anyway?</p>
+        <p id="modal-already-taken-text">Someone in the family has already claimed this gift. Open the store anyway?</p>
         <div class="modal-actions">
           <button type="button" id="btn-modal-cancel-taken" class="btn btn-secondary">
             Cancel
           </button>
           <button type="button" id="btn-modal-proceed-taken" class="btn btn-danger">
-            Proceed to Store Anyway
+            Open store anyway
           </button>
         </div>
       </div>
@@ -609,22 +607,22 @@
     <div id="modal-pledge" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-pledge-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-pledge-title">🤝 Group Gift Pledge</h3>
+          <h3 id="modal-pledge-title">Chip in on this gift</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
-        <p>Contribute toward this gift! Your contribution will be combined with other family members.</p>
+        <p>Your pledge is combined with what other family members give.</p>
         <form id="form-pledge-submit">
           <div class="form-group">
-            <label for="pledge-amount">Pledge Amount ($) *</label>
+            <label for="pledge-amount">Pledge amount ($) *</label>
             <input type="number" id="pledge-amount" min="1" step="1" required placeholder="25">
           </div>
           <div class="form-group">
-            <label for="pledge-note">Optional Note (e.g. From Uncle Dave &amp; Aunt Mary)</label>
+            <label for="pledge-note">Note (optional)</label>
             <input type="text" id="pledge-note" placeholder="From Dave &amp; Mary">
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="submit" class="btn btn-festive">Submit Pledge</button>
+            <button type="submit" class="btn btn-primary">Submit pledge</button>
           </div>
         </form>
       </div>
@@ -634,18 +632,18 @@
     <div id="modal-assign" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-assign-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-assign-title">🛒 Assign Gift to Relative</h3>
+          <h3 id="modal-assign-title">Ask a relative to buy this</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
-        <p>Assign this gift to a relative (like Grandma or Dad). This will claim it in their name and add it to their shopping list.</p>
+        <p>This claims the gift for them and adds it to their shopping list.</p>
         <form id="form-assign-submit">
           <div class="form-group">
-            <label for="assign-relative-name">Relative First Name *</label>
+            <label for="assign-relative-name">Relative first name *</label>
             <input type="text" id="assign-relative-name" required placeholder="Grandma">
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">Assign Gift</button>
+            <button type="submit" class="btn btn-primary">Assign gift</button>
           </div>
         </form>
       </div>
@@ -655,7 +653,7 @@
     <div id="modal-qr" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-qr-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-qr-title">📱 Printable QR Code</h3>
+          <h3 id="modal-qr-title">QR code</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
         <div class="qr-container">
@@ -663,7 +661,7 @@
           <div class="qr-link-text" id="qr-link-text"></div>
         </div>
         <div class="modal-actions">
-          <button type="button" id="btn-print-qr" class="btn btn-secondary">🖨️ Print QR Code</button>
+          <button type="button" id="btn-print-qr" class="btn btn-secondary"><svg class="icon" aria-hidden="true"><use href="/icons.svg#printer"/></svg> Print QR code</button>
           <button type="button" class="btn btn-primary btn-close-modal">Done</button>
         </div>
       </div>
@@ -673,36 +671,36 @@
     <div id="modal-create-list" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-create-list-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-create-list-title">✨ Create a New Wish List</h3>
+          <h3 id="modal-create-list-title">Create a wish list</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
         <form id="form-create-wishlist">
           <div class="form-group">
-            <label for="list-name">Wish List Name *</label>
+            <label for="list-name">List name *</label>
             <input type="text" id="list-name" required placeholder="Christmas 2026, Tommy's Birthday...">
           </div>
 
           <div class="form-group">
             <label for="list-recipient-type">Who is this list for?</label>
             <select id="list-recipient-type">
-              <option value="myself" selected>For Myself</option>
-              <option value="other">On Behalf of Someone Else (Child, Pet, etc.)</option>
+              <option value="myself" selected>For myself</option>
+              <option value="other">For someone else (child, pet, and so on)</option>
             </select>
           </div>
 
           <div class="form-group" id="group-recipient-name" style="display: none;">
-            <label for="list-recipient-name">Recipient's First Name *</label>
+            <label for="list-recipient-name">Recipient first name *</label>
             <input type="text" id="list-recipient-name" placeholder="Tommy">
           </div>
 
           <div class="form-group">
-            <label for="list-event-date">Event Date (Optional)</label>
+            <label for="list-event-date">Event date (optional)</label>
             <input type="date" id="list-event-date">
           </div>
 
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="submit" class="btn btn-gold">Create Wish List</button>
+            <button type="submit" class="btn btn-primary">Create wish list</button>
           </div>
         </form>
       </div>
@@ -712,18 +710,18 @@
     <div id="modal-instance-login" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-instance-login-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-instance-login-title">🛡️ Server Administrator Login</h3>
+          <h3 id="modal-instance-login-title">Server administrator sign in</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
-        <p>Enter the bootstrap instance admin token configured on your server.</p>
+        <p>Enter the admin token from your server settings.</p>
         <form id="form-instance-login">
           <div class="form-group">
-            <label for="instance-bootstrap-token">Bootstrap Admin Token *</label>
+            <label for="instance-bootstrap-token">Admin token *</label>
             <input type="password" id="instance-bootstrap-token" required autocomplete="off" placeholder="••••••••">
           </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">Log In as Admin</button>
+            <button type="submit" class="btn btn-primary">Sign in</button>
           </div>
         </form>
       </div>
@@ -733,35 +731,35 @@
     <div id="modal-totp-enrollment" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-totp-title">
       <div class="modal-card">
         <div class="modal-header">
-          <h3 id="modal-totp-title">🔐 Set Up Two-Factor Authentication</h3>
+          <h3 id="modal-totp-title">Set up two-step sign-in</h3>
           <button type="button" class="btn-close-modal" aria-label="Close modal">&times;</button>
         </div>
         <div id="totp-setup-step-1">
-          <p>Scan this QR code with your authenticator app (Google Authenticator, Apple Passwords, 1Password), or enter the secret key manually.</p>
-          <div style="text-align: center; margin: 1rem 0;">
-            <img id="totp-qr-img" alt="TOTP QR Code" style="max-width: 200px; height: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: inline-block;">
+          <p>Scan this code with your authenticator app (such as Google Authenticator, Apple Passwords, or 1Password), or type the key in by hand.</p>
+          <div class="totp-qr-wrap">
+            <img id="totp-qr-img" class="totp-qr" alt="Authenticator QR code">
           </div>
           <div class="form-group">
-            <label for="totp-secret-text">Secret Key (Manual Entry)</label>
-            <input type="text" id="totp-secret-text" readonly style="font-family: monospace; font-size: 1rem; text-align: center;">
+            <label for="totp-secret-text">Key (to type in by hand)</label>
+            <input type="text" id="totp-secret-text" class="input-mono" readonly>
           </div>
           <form id="form-totp-enable">
             <div class="form-group">
-              <label for="totp-verify-code">Enter 6-Digit Verification Code</label>
+              <label for="totp-verify-code">Enter the 6-digit code</label>
               <input type="text" id="totp-verify-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="123456" required>
             </div>
             <div class="modal-actions">
               <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-              <button type="submit" class="btn btn-primary">Enable 2FA</button>
+              <button type="submit" class="btn btn-primary">Turn on</button>
             </div>
           </form>
         </div>
         <div id="totp-setup-step-2" style="display: none;">
-          <h4 style="color: var(--pine-800);">🎉 Two-Factor Authentication Enabled!</h4>
-          <p>Save these <strong>8 single-use recovery codes</strong> in a safe place. If you ever lose access to your authenticator app, you can use any of these to sign in.</p>
-          <div id="totp-recovery-codes-box" style="background: var(--bg-cream); padding: 1rem; border-radius: var(--radius-sm); font-family: monospace; font-weight: 700; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 1rem 0; border: 1px solid var(--gold-400);"></div>
+          <h4 class="success-heading">Two-step sign-in is on</h4>
+          <p>Save these <strong>8 recovery codes</strong> somewhere safe. Each one works once if you lose your authenticator app.</p>
+          <div id="totp-recovery-codes-box" class="recovery-codes"></div>
           <div class="modal-actions">
-            <button type="button" id="btn-totp-complete" class="btn btn-festive btn-full">I Saved My Recovery Codes — Continue to Family</button>
+            <button type="button" id="btn-totp-complete" class="btn btn-primary btn-full">I saved my recovery codes</button>
           </div>
         </div>
       </div>

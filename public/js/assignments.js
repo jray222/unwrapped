@@ -77,7 +77,7 @@ export function renderAssignments(assignments) {
     if (navigator.share) {
       const btnShare = document.createElement('button');
       btnShare.type = 'button';
-      btnShare.className = 'btn btn-festive btn-sm';
+      btnShare.className = 'btn btn-primary btn-sm';
       btnShare.textContent = '📱 Share Card';
       btnShare.addEventListener('click', () => {
         navigator.share({
