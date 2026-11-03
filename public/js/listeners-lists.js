@@ -6,6 +6,7 @@ import { loadFamilyWishLists, selectWishList } from './lists.js';
 import { handleClaimItem } from './gifts.js';
 import { handleAutofill } from './autofill.js';
 import { navigate } from './router.js';
+import { deleteWishListItem } from './items.js';
 
 export function bindListListeners() {
   // Reveal givers (card button and overflow menu item)
@@ -132,25 +133,9 @@ export function bindListListeners() {
   });
 
   // Delete Item Button (inside Edit item sheet)
-  document.getElementById('btn-delete-item')?.addEventListener('click', async () => {
-    if (!state.currentListId) return;
-    const itemId = document.getElementById('edit-item-id').value;
-    if (!itemId) return;
-
-    if (!confirm('Are you sure you want to remove this item from the list?')) return;
-
-    const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/items/${itemId}`, {
-      method: 'DELETE',
-    });
-
-    if (res && res.ok) {
-      showToast('Item removed.');
-      closeActiveModal();
-      selectWishList(state.currentListId);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || 'Failed to remove item');
-    }
+  document.getElementById('btn-delete-item')?.addEventListener('click', () => {
+    const itemId = document.getElementById('edit-item-id')?.value;
+    if (itemId) deleteWishListItem(itemId);
   });
 
   // Modal Close Buttons

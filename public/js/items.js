@@ -1,7 +1,148 @@
 /** Item card rendering. */
 import { state } from './state.js';
-import { createOverflowMenu, icon, openModal } from './ui.js';
+import { apiFetch } from './api.js';
+import { closeActiveModal, createOverflowMenu, icon, openModal, showToast } from './ui.js';
 import { handleClaimItem, handleReleaseClaim } from './gifts.js';
+
+let openCardInner = null;
+
+export async function deleteWishListItem(itemId) {
+  if (!state.currentListId || !itemId) return;
+  if (!confirm('Are you sure you want to remove this item from the list?')) {
+    const card = document.querySelector(`[data-item-id="${itemId}"]`);
+    if (card) {
+      const cardInner = card.querySelector('.item-card-inner');
+      if (cardInner) {
+        cardInner.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        cardInner.style.transform = 'translateX(0px)';
+      }
+      card.classList.remove('is-swiping', 'is-snapped');
+    }
+    return;
+  }
+
+  const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/items/${itemId}`, {
+    method: 'DELETE',
+  });
+
+  if (res && res.ok) {
+    showToast('Item removed.');
+    closeActiveModal();
+    const { selectWishList } = await import('./lists.js');
+    selectWishList(state.currentListId);
+  } else {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || 'Failed to remove item');
+    const { selectWishList } = await import('./lists.js');
+    selectWishList(state.currentListId);
+  }
+}
+
+function attachSwipeToDelete(card, cardInner, itemId) {
+  let startX = null;
+  let startY = null;
+  let pointerId = null;
+  let isDragging = false;
+  let isScrolling = false;
+  let currentX = 0;
+  let isSnappedOpen = false;
+
+  const resetPosition = (smooth = true) => {
+    if (smooth) {
+      cardInner.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+    } else {
+      cardInner.style.transition = 'none';
+    }
+    cardInner.style.transform = 'translateX(0px)';
+    card.classList.remove('is-swiping', 'is-snapped');
+    isSnappedOpen = false;
+    if (openCardInner === cardInner) openCardInner = null;
+  };
+
+  cardInner.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, a, select, input, textarea, .menu-wrap')) return;
+
+    if (openCardInner && openCardInner !== cardInner) {
+      openCardInner.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      openCardInner.style.transform = 'translateX(0px)';
+      const parent = openCardInner.closest('.item-card');
+      if (parent) parent.classList.remove('is-swiping', 'is-snapped');
+      openCardInner = null;
+    }
+
+    startX = e.clientX;
+    startY = e.clientY;
+    pointerId = e.pointerId;
+    isDragging = false;
+    isScrolling = false;
+    currentX = isSnappedOpen ? -84 : 0;
+    cardInner.style.transition = 'none';
+  });
+
+  cardInner.addEventListener('pointermove', (e) => {
+    if (startX === null || isScrolling) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!isDragging) {
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 7) {
+        isScrolling = true;
+        startX = null;
+        return;
+      }
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        isDragging = true;
+        card.classList.add('is-swiping');
+        try { cardInner.setPointerCapture(pointerId); } catch (_) {}
+      }
+    }
+
+    if (isDragging) {
+      const baseOffset = isSnappedOpen ? -84 : 0;
+      const target = baseOffset + dx;
+      currentX = target > 0 ? target * 0.2 : Math.max(-card.offsetWidth, target);
+      cardInner.style.transform = `translateX(${currentX}px)`;
+    }
+  });
+
+  const onPointerEnd = () => {
+    if (startX === null && !isDragging) return;
+
+    cardInner.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+
+    if (isDragging) {
+      try { cardInner.releasePointerCapture(pointerId); } catch (_) {}
+
+      const cardWidth = card.offsetWidth;
+      if (currentX < -cardWidth * 0.45 || currentX < -150) {
+        cardInner.style.transform = `translateX(-${cardWidth}px)`;
+        card.classList.add('is-snapped');
+        setTimeout(() => {
+          deleteWishListItem(itemId);
+        }, 180);
+      } else if (currentX < -45) {
+        cardInner.style.transform = 'translateX(-84px)';
+        card.classList.add('is-snapped');
+        card.classList.remove('is-swiping');
+        isSnappedOpen = true;
+        openCardInner = cardInner;
+      } else {
+        resetPosition(true);
+      }
+    } else if (isSnappedOpen) {
+      resetPosition(true);
+    }
+
+    startX = null;
+    isDragging = false;
+    isScrolling = false;
+  };
+
+  cardInner.addEventListener('pointerup', onPointerEnd);
+  cardInner.addEventListener('pointercancel', onPointerEnd);
+}
 
 function makeTag(text, cls = '', iconName = '') {
   const tag = document.createElement('span');
@@ -35,6 +176,7 @@ export function openEditItemModal(item) {
 export function createItemCard(item, { isTaken, isSurpriseProtected, canManageList = false }) {
   const card = document.createElement('article');
   card.className = `item-card ${item.priority === 'really_want' ? 'is-featured' : ''}`.trim();
+  card.dataset.itemId = item.id;
 
   // Image (4:3) with a soft icon placeholder
   const imgWrapper = document.createElement('div');
@@ -53,7 +195,6 @@ export function createItemCard(item, { isTaken, isSurpriseProtected, canManageLi
   } else {
     showPlaceholder();
   }
-  card.appendChild(imgWrapper);
 
   const details = document.createElement('div');
   details.className = 'item-details';
@@ -76,11 +217,12 @@ export function createItemCard(item, { isTaken, isSurpriseProtected, canManageLi
     }
   };
 
-  // Overflow menu: Edit / Pledge / Assign / Open store / shopping cards.
+  // Overflow menu: Edit / Delete / Pledge / Assign / Open store / shopping cards.
   // Pledge and Assign are giver-only, so they never exist on the recipient's own list.
   const menuItems = [];
   if (canManageList) {
     menuItems.push({ label: 'Edit item', icon: 'pencil', onClick: () => openEditItemModal(item) });
+    menuItems.push({ label: 'Delete item', icon: 'trash', onClick: () => deleteWishListItem(item.id) });
   }
   if (!isSurpriseProtected) {
     menuItems.push({ label: 'Pledge toward this', icon: 'coins', onClick: () => openModal('modal-pledge', { item }) });
@@ -204,6 +346,30 @@ export function createItemCard(item, { isTaken, isSurpriseProtected, canManageLi
   }
   if (actions.childElementCount) details.appendChild(actions);
 
-  card.appendChild(details);
+  const inner = document.createElement('div');
+  inner.className = 'item-card-inner';
+  inner.appendChild(imgWrapper);
+  inner.appendChild(details);
+
+  if (canManageList) {
+    card.classList.add('is-swipeable');
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'swipe-delete-action';
+    deleteBtn.setAttribute('aria-label', `Delete ${item.name}`);
+    deleteBtn.innerHTML = `${icon('trash')}<span>Delete</span>`;
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteWishListItem(item.id);
+    });
+
+    card.appendChild(deleteBtn);
+    card.appendChild(inner);
+    attachSwipeToDelete(card, inner, item.id);
+  } else {
+    card.appendChild(inner);
+  }
+
   return card;
 }
