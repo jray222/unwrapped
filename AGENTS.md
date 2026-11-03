@@ -6,7 +6,7 @@
 
 ## 1. Current Project Status
 
-- **Phase**: Complete, Verified, & Deployed (`47/47` Vitest + Supertest integration & security tests passing; `tsc --noEmit` 0 errors; Docker production image & GitHub Container Registry pipeline active).
+- **Phase**: Complete, Verified, & Deployed (`56/56` Vitest + Supertest integration & security tests passing; `tsc --noEmit` 0 errors; Docker production image & GitHub Container Registry pipeline active).
 - **Completed Modules**:
   - [x] **Module 1 — Database Layer & PostgreSQL Row-Level Security (`src/db/index.ts`, `src/db/schema.sql`)**:
     - Dual PostgreSQL engine (`pg.Pool` for Docker/PostgreSQL 16 and `@electric-sql/pglite` for zero-config local/test execution).
@@ -22,12 +22,14 @@
     - `shopping-card.ts`: Generates static offline Shopping Cards in both **PDF** (`pdfkit`) and **PNG** (`sharp` SVG rasterization) formats with zero embedded credentials.
   - [x] **Module 4 — Core API Routes (`src/routes/instance-admin.ts`, `src/routes/family-admin.ts`, `src/routes/lists-items/`, `src/routes/gifts/`)**:
     - Content-blind Instance Admin API, Family Admin member/role/invite/guest-link/audit-log management, Lists & Items with catch-all item and price filters, Claiming & Group Gifting Pledges, Assignments with status tracking & 5-day pre-event reminders, Post-Event Thank-You Mode reveal, and Offline Sync (`POST /api/offline/sync`).
-  - [x] **Module 5 — Cheerful Winter Holiday Accessible SPA & Offline Service Worker (`public/`)**:
-    - Cozy winter & holiday theme (`#FAF7F2` snow cream, `#1B4332` evergreen pine, `#9B2226` cranberry red, `#D97706` gold ribbon) with `18px` base text and `52px+` touch targets.
-    - Full strict CSP compliance (`script-src 'self'`), offline action queue (`localStorage.unwrapped_offline_queue`), Service Worker caching (`public/sw.js`), iOS Share Sheet (`navigator.share`), and pure-JS printable QR codes.
+  - [x] **Module 5 — Refined Warm Accessible SPA & Offline Service Worker (`public/`)**:
+    - Refined warm design: pine primary (`#1E4D3A`), sparing cranberry accent (only for "Really want" tags, destructive actions, small highlights), warm paper neutrals, Fraunces (headings) and Inter (UI) self-hosted in `public/fonts/`, SVG icon sprite (`public/icons.svg`), no emoji, gradients or dashed borders in the chrome. `18px` base text and `52px+` touch targets.
+    - Navigation: sidebar (desktop) and bottom tab bar (phones) with a family switcher and avatar menu; hash routes (`#/lists/:id`, `#/shopping`, `#/share`, `#/family`) handled by `public/js/router.js`. Guest, assignment, auth and instance-admin views use a minimal shell.
+    - Empty states, skeleton loading cards, toast above the tab bar, `prefers-reduced-motion`, pine focus rings and print styles for the new shell.
+    - Full strict CSP compliance (`script-src 'self'`), offline action queue (`localStorage.unwrapped_offline_queue`), Service Worker caching (`public/sw.js`, `CACHE_NAME` must match `CURRENT_SHELL_CACHE` in `public/js/main.js`), iOS Share Sheet (`navigator.share`), and pure-JS printable QR codes.
   - [x] **Module 6 — Docker, Caddy Automatic HTTPS, CI/CD & Verification Suite (`Dockerfile`, `docker-compose.yml`, `.github/workflows/docker-image.yml`, `tests/*.test.ts`)**:
     - Multi-container production stack (`db` PostgreSQL 16 + `app` Node 22 + `caddy` automatic HTTPS on ports `38180` HTTP / `38443` HTTPS).
-    - 47 end-to-end security and functional tests in `tests/01-…08-*.test.ts` (shared setup in `tests/helpers/fixtures.ts`).
+    - 56 end-to-end security and functional tests in `tests/01-…08-*.test.ts` (shared setup in `tests/helpers/fixtures.ts`).
 
 ---
 
@@ -103,14 +105,16 @@ unwrapped/
 │   ├── app.ts                       # Express app assembly
 │   └── server.ts                    # HTTP server entrypoint
 ├── public/
-│   ├── index.html                   # Cheerful winter holiday, large-text mobile-first UI
-│   ├── styles.css                   # Accessible styling (18px+ base font, 52px+ tap targets, print styles)
-│   ├── js/                          # Native ES modules; main.js is the entry (state, api, session, lists, items, gifts, assignments, offline, passkeys, …)
+│   ├── index.html                   # Refined warm, large-text mobile-first UI shell
+│   ├── styles.css                   # Design tokens and components (18px+ base font, 52px+ tap targets, print styles)
+│   ├── icons.svg                    # SVG icon sprite
+│   ├── fonts/                       # Self-hosted Fraunces and Inter (woff2) + OFL license
+│   ├── js/                          # Native ES modules; main.js is the entry; router.js is the hash router (state, api, session, lists, items, gifts, assignments, offline, passkeys, …)
 │   ├── sw.js                        # Service Worker for offline caching of guest/assignment views
 │   ├── manifest.json                # Web App Manifest
 │   └── icon.svg                     # Festive gift app icon
 └── tests/
-    ├── 01…08-*.test.ts              # 47-test end-to-end & security verification suite, split by section
+    ├── 01…08-*.test.ts              # 56-test end-to-end & security verification suite, split by section
     └── helpers/fixtures.ts          # Shared test setup
 └── e2e/
     └── smoke.spec.ts                # Playwright browser smoke test (login + 2FA, list, item, autofill wiring)
@@ -120,7 +124,7 @@ unwrapped/
 
 ## 4. Common Developer & LLM Commands
 
-- **Run full test suite (47 tests)**: `npm test`
+- **Run full test suite (56 tests)**: `npm test`
 - **Run browser smoke tests (Playwright, needs `npx playwright install chromium` once)**: `npm run test:e2e`
 - **Run TypeScript typecheck**: `npm run build`
 - **Start local development server**: `npm run dev` (listens on `http://localhost:3000`)

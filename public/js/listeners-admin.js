@@ -1,12 +1,34 @@
 /** Event listeners: share links, invites, admin consoles. */
 import { state } from './state.js';
 import { apiFetch } from './api.js';
-import { closeActiveModal, openModal, resetAuthState, showToast, showView } from './ui.js';
+import { closeActiveModal, icon, openModal, resetAuthState, showToast, showView } from './ui.js';
 import { openInviteWithToken } from './session.js';
 import { loadShareLinksView, showQrModal } from './share-links.js';
-import { initInstanceAdminInterface, loadInstanceAdminView } from './admin.js';
+import { bindFamilyTabs, initInstanceAdminInterface, loadInstanceAdminView } from './admin.js';
+
+
+/** A tinted result card with a read-only link field and icon-labelled actions. */
+function linkResultHtml(title, hint, url, actionsHtml) {
+  const safeUrl = String(url).replace(/"/g, '&quot;');
+  return `
+    <div class="card card-tinted result-card">
+      <h4>${title}</h4>
+      <p class="form-hint">${hint}</p>
+      <input type="text" readonly value="${safeUrl}" aria-label="Link">
+      <div class="inline-actions">${actionsHtml}</div>
+    </div>
+  `;
+}
+
+function esc(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
 
 export function bindAdminListeners() {
+  bindFamilyTabs();
+
   // Create Guest Link Form
   document.getElementById('form-create-guest-link')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -56,17 +78,15 @@ export function bindAdminListeners() {
       const url = data.inviteUrl
         ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
         : `${window.location.origin}/invite/${token}`;
-      document.getElementById('invite-result-box').innerHTML = `
-        <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
-          <h4>✅ 7-Day Invite Generated for ${email}</h4>
-          <p class="form-hint">Send this single-use link to your relative:</p>
-          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-invite">📋 Copy Link</button>
-        </div>
-      `;
+      document.getElementById('invite-result-box').innerHTML = linkResultHtml(
+        `Invite ready for ${esc(email)}`,
+        'Send this link to your relative. It works once and expires in 7 days.',
+        url,
+        `<button type="button" class="btn btn-secondary btn-sm" id="btn-copy-invite">${icon('copy')} Copy link</button>`,
+      );
       document.getElementById('btn-copy-invite')?.addEventListener('click', () => {
         navigator.clipboard.writeText(url);
-        showToast('Invite link copied!');
+        showToast('Invite link copied.');
       });
       document.getElementById('form-invite-member').reset();
     } else {
@@ -93,24 +113,20 @@ export function bindAdminListeners() {
       const url = data.assistedUrl
         ? (data.assistedUrl.startsWith('http') ? data.assistedUrl : `${window.location.origin}${data.assistedUrl}`)
         : `${window.location.origin}/assisted/${token}`;
-      document.getElementById('assisted-result-box').innerHTML = `
-        <div class="card" style="background: var(--gold-100); border-color: var(--gold-500);">
-          <h4>✨ 1-Tap Passkey Setup Link for ${firstName}</h4>
-          <p class="form-hint">Your relative can tap this link on their phone to immediately enroll their FaceID/Fingerprint without entering any password!</p>
-          <input type="text" readonly value="${url}" style="margin-bottom: 0.5rem;">
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-assisted">📋 Copy Link</button>
-            <a class="btn btn-secondary btn-sm" href="sms:?&body=${encodeURIComponent(`Hi ${firstName}! Tap this link to join our family gift list: ${url}`)}">💬 Send SMS</a>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-qr-assisted">📱 QR Code</button>
-          </div>
-        </div>
-      `;
+      document.getElementById('assisted-result-box').innerHTML = linkResultHtml(
+        `Setup link for ${esc(firstName)}`,
+        'Your relative can tap this link on their phone to set up Face ID or a fingerprint. No password needed.',
+        url,
+        `<button type="button" class="btn btn-secondary btn-sm" id="btn-copy-assisted">${icon('copy')} Copy link</button>
+         <a class="btn btn-secondary btn-sm" href="sms:?&body=${encodeURIComponent(`Hi ${firstName}! Tap this link to join our family gift list: ${url}`)}">${icon('message')} Text it</a>
+         <button type="button" class="btn btn-secondary btn-sm" id="btn-qr-assisted">${icon('qr-code')} QR code</button>`,
+      );
       document.getElementById('btn-copy-assisted')?.addEventListener('click', () => {
         navigator.clipboard.writeText(url);
-        showToast('Assisted link copied!');
+        showToast('Setup link copied.');
       });
       document.getElementById('btn-qr-assisted')?.addEventListener('click', () => {
-        showQrModal(url, `Assisted Setup for ${firstName}`);
+        showQrModal(url, `Setup link for ${firstName}`);
       });
     } else {
       const err = await res.json().catch(() => ({}));
@@ -145,7 +161,7 @@ export function bindAdminListeners() {
       state.csrfToken = data.csrfToken || '';
       initInstanceAdminInterface();
     } else {
-      showToast('Invalid bootstrap admin token.');
+      showToast('That admin token is not valid.');
     }
   });
 
@@ -166,20 +182,16 @@ export function bindAdminListeners() {
       const inviteUrl = data.inviteUrl
         ? (data.inviteUrl.startsWith('http') ? data.inviteUrl : `${window.location.origin}${data.inviteUrl}`)
         : `${window.location.origin}/invite/${token}`;
-      document.getElementById('create-family-result').innerHTML = `
-        <div class="card" style="background: var(--pine-100); border-color: var(--pine-600);">
-          <h4>✅ Family "${name}" Created Successfully</h4>
-          <p class="form-hint">Initial Admin Invite Link for ${adminEmail}:</p>
-          <input type="text" readonly value="${inviteUrl}" style="margin-bottom: 0.5rem;">
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-copy-family-invite">📋 Copy Invite</button>
-            <button type="button" class="btn btn-primary btn-sm" id="btn-open-family-invite">👉 Open Invite &amp; Create Admin Account</button>
-          </div>
-        </div>
-      `;
+      document.getElementById('create-family-result').innerHTML = linkResultHtml(
+        `Family "${esc(name)}" created`,
+        `Invite link for the first admin, ${esc(adminEmail)}:`,
+        inviteUrl,
+        `<button type="button" class="btn btn-secondary btn-sm" id="btn-copy-family-invite">${icon('copy')} Copy invite</button>
+         <button type="button" class="btn btn-primary btn-sm" id="btn-open-family-invite">Open invite and create the admin account</button>`,
+      );
       document.getElementById('btn-copy-family-invite')?.addEventListener('click', () => {
         navigator.clipboard.writeText(inviteUrl);
-        showToast('Admin invite copied!');
+        showToast('Admin invite copied.');
       });
       document.getElementById('btn-open-family-invite')?.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});

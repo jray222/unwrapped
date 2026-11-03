@@ -4,8 +4,8 @@
   "description": "Cozy, private, and surprise-safe family wish list app with offline shopping support.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FAF7F2",
-  "theme_color": "#1B4332",
+  "background_color": "#FBF8F3",
+  "theme_color": "#1E4D3A",
   "orientation": "portrait",
   "icons": [
     {

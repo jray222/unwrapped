@@ -2,6 +2,11 @@
 import { state } from './state.js';
 import { apiFetch } from './api.js';
 
+function setStatus(el, text, kind) {
+  el.textContent = text;
+  el.className = `autofill-status ${kind ? `is-${kind}` : ''}`.trim();
+}
+
 export async function handleAutofill() {
   const urlInput = document.getElementById('input-autofill-url');
   const statusEl = document.getElementById('autofill-status');
@@ -9,13 +14,11 @@ export async function handleAutofill() {
 
   const url = urlInput.value.trim();
   if (!url) {
-    statusEl.textContent = 'Please enter a valid product URL.';
-    statusEl.style.color = 'var(--berry-700)';
+    setStatus(statusEl, 'Please enter a valid product link.', 'error');
     return;
   }
 
-  statusEl.textContent = '⏳ Safely fetching product details...';
-  statusEl.style.color = 'var(--pine-800)';
+  setStatus(statusEl, 'Fetching product details...', '');
 
   try {
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/autofill`, {
@@ -25,8 +28,7 @@ export async function handleAutofill() {
 
     if (!res || res.status !== 200) {
       const err = await res.json().catch(() => ({}));
-      statusEl.textContent = `❌ ${err.error || 'Could not auto-fill. Please enter details manually.'}`;
-      statusEl.style.color = 'var(--berry-700)';
+      setStatus(statusEl, err.error || 'Could not fill in details. Please enter them by hand.', 'error');
       return;
     }
 
@@ -37,10 +39,8 @@ export async function handleAutofill() {
     if (data.image_url) document.getElementById('item-image-url').value = data.image_url;
     document.getElementById('item-store-url').value = url;
 
-    statusEl.textContent = '✅ Auto-fill complete! Review and adjust details below.';
-    statusEl.style.color = 'var(--pine-700)';
+    setStatus(statusEl, 'Details filled in. Review them below.', 'ok');
   } catch (_e) {
-    statusEl.textContent = '❌ Auto-fill error. Please fill in details manually.';
-    statusEl.style.color = 'var(--berry-700)';
+    setStatus(statusEl, 'Could not fill in details. Please enter them by hand.', 'error');
   }
 }

@@ -1,7 +1,8 @@
 // Unwrapped v2 — Offline Service Worker (Network-First for App Shell)
-const CACHE_NAME = 'unwrapped-v2-shell-v4';
+const CACHE_NAME = 'unwrapped-v2-shell-v7';
 
 const STATIC_SHELL_URLS = [
+  '/js/router.js',
   '/',
   '/index.html',
   '/styles.css',
@@ -27,6 +28,9 @@ const STATIC_SHELL_URLS = [
   '/js/ui.js',
   '/manifest.json',
   '/icon.svg',
+  '/icons.svg',
+  '/fonts/fraunces-latin-wght-normal.woff2',
+  '/fonts/inter-latin-wght-normal.woff2',
 ];
 
 const READONLY_API_ENDPOINTS = [
@@ -132,7 +136,8 @@ self.addEventListener('fetch', (event) => {
       url.pathname.endsWith('.css') ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.json') ||
-      url.pathname.endsWith('.svg'))
+      url.pathname.endsWith('.svg') ||
+      url.pathname.endsWith('.woff2'))
   ) {
     event.respondWith(
       fetch(request)

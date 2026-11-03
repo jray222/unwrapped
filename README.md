@@ -2,7 +2,7 @@
 
 **Unwrapped** is a self-hosted, invite-only gift wish list platform designed for multiple families to share on a single deployment. Givers coordinate purchases, split big gifts with group pledges, and assign shopping tasks to relatives — all while strictly guaranteeing that a list's recipient never learns what has been bought, pledged, or assigned until after the event.
 
-Designed with a warm, cheerful winter and holiday aesthetic (cozy evergreen pine, festive cranberry red, snow-cream cards, and golden ribbon accents), **Unwrapped** prioritizes both rigorous security and effortless usability for older, less technical relatives.
+Designed with a refined warm look (pine green primary, a sparing cranberry accent, warm paper neutrals, self-hosted Fraunces and Inter fonts, an SVG icon set, and a sidebar or bottom-tab navigation with hash routes), **Unwrapped** prioritizes both rigorous security and effortless usability for older, less technical relatives.
 
 ---
 
@@ -55,7 +55,7 @@ Unwrapped includes an in-process PostgreSQL engine (`@electric-sql/pglite`) with
 
 ```bash
 npm install
-npm test          # Runs the 47-test security & integration suite
+npm test          # Runs the 56-test security & integration suite
 npm run dev       # Starts server at http://localhost:3000
 ```
 
