@@ -743,7 +743,7 @@
           </div>
           <div class="form-group">
             <label for="totp-secret-text">Secret Key (Manual Entry)</label>
-            <input type="text" id="totp-secret-text" readonly style="font-family: monospace; font-size: 1rem; text-align: center;" onclick="this.select()">
+            <input type="text" id="totp-secret-text" readonly style="font-family: monospace; font-size: 1rem; text-align: center;">
           </div>
           <form id="form-totp-enable">
             <div class="form-group">
@@ -770,6 +770,6 @@
   </div>
 
   <!-- Main JavaScript Bundle (CSP compliant, no inline scripts) -->
-  <script src="/app.js" defer></script>
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>

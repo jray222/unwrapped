@@ -1,0 +1,258 @@
+/** Event listeners: navigation, login, MFA, invites. */
+import { state } from './state.js';
+import { syncOfflineQueue, updateOfflineBanner } from './offline.js';
+import { apiFetch } from './api.js';
+import { closeActiveModal, openModal, resetAuthState, showToast, showView } from './ui.js';
+import { checkCurrentSession, openInviteWithToken, updateFamilyRoleUi } from './session.js';
+import { loadFamilyWishLists } from './lists.js';
+import { loadAssignmentsView } from './assignments.js';
+import { loadShareLinksView } from './share-links.js';
+import { loadFamilyAdminView } from './admin.js';
+import { handlePasskeyLogin, handlePasskeyRegister, startTotpEnrollment } from './passkeys.js';
+
+export function bindAuthListeners() {
+  // Offline & Online events
+  window.addEventListener('online', () => {
+    updateOfflineBanner();
+    syncOfflineQueue();
+  });
+  window.addEventListener('offline', updateOfflineBanner);
+
+  document.getElementById('btn-sync-now')?.addEventListener('click', syncOfflineQueue);
+
+  // Brand Link / Home
+  document.getElementById('brand-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (state.sessionKind === 'user') showView('view-dashboard');
+    else if (state.sessionKind === 'instance_admin') showView('view-instance-admin');
+    else showView('view-auth');
+  });
+
+  // Family Selector
+  document.getElementById('family-selector')?.addEventListener('change', (e) => {
+    state.currentFamilyId = e.target.value;
+    updateFamilyRoleUi();
+    loadFamilyWishLists(state.currentFamilyId);
+  });
+
+  // Navigation Buttons
+  document.getElementById('nav-wishlists')?.addEventListener('click', () => showView('view-dashboard'));
+  document.getElementById('nav-assignments')?.addEventListener('click', loadAssignmentsView);
+  document.getElementById('nav-links')?.addEventListener('click', loadShareLinksView);
+  document.getElementById('nav-admin')?.addEventListener('click', loadFamilyAdminView);
+
+  // Logout Button
+  document.getElementById('nav-logout')?.addEventListener('click', async () => {
+    await apiFetch('/api/auth/logout', { method: 'POST' });
+    resetAuthState();
+    showView('view-auth');
+    showToast('Signed out successfully.');
+  });
+
+  // Passkey Login Button
+  document.getElementById('btn-passkey-login')?.addEventListener('click', handlePasskeyLogin);
+
+  // Google Login Button
+  document.getElementById('btn-google-login')?.addEventListener('click', () => {
+    window.location.href = '/api/auth/google';
+  });
+
+  // Email & Password Login Form
+  document.getElementById('form-login')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('input-email').value.trim();
+    const password = document.getElementById('input-password').value;
+
+    const res = await apiFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (res && res.ok) {
+      const data = await res.json();
+      state.csrfToken = data.csrfToken || state.csrfToken;
+      if (data.mfaEnrollmentRequired) {
+        showToast('Mandatory 2FA setup required. Please enroll an authenticator app.');
+        startTotpEnrollment();
+      } else if (data.mfaRequired || data.mfa_required) {
+        document.getElementById('mfa-step').style.display = 'block';
+        document.getElementById('group-password').style.display = 'none';
+        document.getElementById('btn-submit-login').style.display = 'none';
+        showToast('Please enter your 2FA authenticator code or recovery code.');
+      } else {
+        checkCurrentSession();
+      }
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Invalid credentials');
+    }
+  });
+
+  // MFA Verification Button
+  document.getElementById('btn-verify-mfa')?.addEventListener('click', async () => {
+    const totpCode = document.getElementById('input-totp-code').value.trim();
+    const recoveryCode = document.getElementById('input-recovery-code').value.trim();
+
+    if (totpCode) {
+      const res = await apiFetch('/api/auth/mfa/totp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ code: totpCode }),
+      });
+      if (res && res.ok) {
+        checkCurrentSession();
+        return;
+      }
+    } else if (recoveryCode) {
+      const res = await apiFetch('/api/auth/mfa/recovery/verify', {
+        method: 'POST',
+        body: JSON.stringify({ recoveryCode }),
+      });
+      if (res && res.ok) {
+        checkCurrentSession();
+        return;
+      }
+    }
+    showToast('Invalid 2FA code or recovery code.');
+  });
+
+  // TOTP Enable Form in Modal
+  document.getElementById('form-totp-enable')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('totp-verify-code').value.trim();
+    if (!code) return;
+
+    const res = await apiFetch('/api/auth/mfa/totp/enable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+
+    if (res && res.ok) {
+      const data = await res.json();
+      const step1 = document.getElementById('totp-setup-step-1');
+      const step2 = document.getElementById('totp-setup-step-2');
+      const codesBox = document.getElementById('totp-recovery-codes-box');
+
+      if (step1) step1.style.display = 'none';
+      if (step2) step2.style.display = 'block';
+      if (codesBox && Array.isArray(data.recoveryCodes)) {
+        codesBox.innerHTML = data.recoveryCodes
+          .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+          .join('');
+      }
+      showToast('✅ 2FA successfully enabled!');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Invalid 6-digit verification code');
+    }
+  });
+
+  document.getElementById('btn-totp-complete')?.addEventListener('click', () => {
+    closeActiveModal();
+    checkCurrentSession();
+  });
+
+  // Passkey Accept Invite Button
+  document.getElementById('btn-accept-with-passkey')?.addEventListener('click', async () => {
+    if (state.pendingAssistedToken) {
+      try {
+        const res = await apiFetch('/api/auth/assisted-enroll', {
+          method: 'POST',
+          body: JSON.stringify({ token: state.pendingAssistedToken }),
+        });
+        if (res && res.ok) {
+          const data = await res.json();
+          state.sessionKind = 'user';
+          state.currentUser = data.user;
+          state.csrfToken = data.csrfToken || '';
+          showToast('🎉 Passkey enrollment successful! Welcome to the family.');
+          if (data.recoveryCodes && data.recoveryCodes.length > 0) {
+            const step1 = document.getElementById('totp-setup-step-1');
+            const step2 = document.getElementById('totp-setup-step-2');
+            const codesBox = document.getElementById('totp-recovery-codes-box');
+            if (step1) step1.style.display = 'none';
+            if (step2) step2.style.display = 'block';
+            if (codesBox) {
+              codesBox.innerHTML = data.recoveryCodes
+                .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
+                .join('');
+            }
+            openModal('modal-totp-enrollment');
+          } else {
+            checkCurrentSession();
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || 'Assisted enrollment failed');
+        }
+      } catch (_e) {
+        showToast('Assisted enrollment failed');
+      }
+    } else if (state.pendingInviteToken) {
+      showToast('Please enter your name and password below to join, then you can enroll your passkey!');
+      document.getElementById('accept-first-name')?.focus();
+    } else {
+      handlePasskeyRegister('Passkey');
+    }
+  });
+
+  // Password Accept Invite Form
+  document.getElementById('form-accept-invite-password')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const firstName = document.getElementById('accept-first-name').value.trim();
+    const lastName = document.getElementById('accept-last-name').value.trim();
+    const password = document.getElementById('accept-password').value;
+
+    if (!state.pendingInviteToken) {
+      showToast('No pending invite found. Please use the invite link you received.');
+      return;
+    }
+
+    const res = await apiFetch('/api/auth/register-from-invite', {
+      method: 'POST',
+      body: JSON.stringify({
+        inviteToken: state.pendingInviteToken,
+        firstName,
+        lastName,
+        password,
+      }),
+    });
+
+    if (res && res.ok) {
+      const data = await res.json();
+      state.sessionKind = 'user';
+      state.currentUser = data.user;
+      state.csrfToken = data.csrfToken || '';
+      showToast('Welcome to the family! Please complete Two-Factor Authentication setup.');
+      document.getElementById('subview-invite-accept').style.display = 'none';
+      if (data.mfaEnrollmentRequired) {
+        startTotpEnrollment();
+      } else {
+        checkCurrentSession();
+      }
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to accept invitation');
+    }
+  });
+
+  // Cancel Invite & Back to Sign In
+  document.getElementById('btn-cancel-invite')?.addEventListener('click', async () => {
+    state.pendingInviteToken = null;
+    state.pendingAssistedToken = null;
+    await apiFetch('/api/links/clear-pending', { method: 'POST' }).catch(() => {});
+    const banner = document.getElementById('subview-invite-accept');
+    const signInCard = document.getElementById('card-signin');
+    if (banner) banner.style.display = 'none';
+    if (signInCard) signInCard.style.display = 'block';
+  });
+
+  // Manual Invite Link / Token Redeem Form
+  document.getElementById('form-manual-invite')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = document.getElementById('input-manual-invite')?.value || '';
+    const ok = await openInviteWithToken(raw);
+    if (ok) {
+      document.getElementById('form-manual-invite')?.reset();
+    }
+  });
+}
