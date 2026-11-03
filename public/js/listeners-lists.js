@@ -163,7 +163,7 @@ export function bindListListeners() {
 
   document.getElementById('list-recipient-type')?.addEventListener('change', (e) => {
     const group = document.getElementById('group-recipient-name');
-    if (group) group.style.display = e.target.value === 'other' ? 'block' : 'none';
+    if (group) group.hidden = !(e.target.value === 'other');
   });
 
   document.getElementById('form-create-wishlist')?.addEventListener('submit', async (e) => {

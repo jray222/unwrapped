@@ -161,8 +161,8 @@ export async function startTotpEnrollment() {
 
     if (qrImg) qrImg.src = data.qrCodeDataUrl;
     if (secretInput) secretInput.value = data.secret;
-    if (step1) step1.style.display = 'block';
-    if (step2) step2.style.display = 'none';
+    if (step1) step1.hidden = false;
+    if (step2) step2.hidden = true;
 
     openModal('modal-totp-enrollment');
   } catch (_e) {

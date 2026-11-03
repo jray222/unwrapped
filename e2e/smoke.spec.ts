@@ -85,6 +85,15 @@ test('sign in with password + 2FA, create a list, add an item, and use autofill'
   await page.locator('#form-create-wishlist button[type="submit"]').click();
   await expect(page.locator('#lists-tabs-bar')).toContainText('Smoke Test List');
 
+  // ---- Navigation: Shopping via the shell, hash route, and back button ----
+  const shopping = page.locator('[data-nav="shopping"]:visible').first();
+  await shopping.click();
+  await expect(page.locator('#view-assignments')).toBeVisible();
+  await expect(page).toHaveURL(/#\/shopping$/);
+  await expect(shopping).toHaveAttribute('aria-current', 'page');
+  await page.goBack();
+  await expect(page.locator('#view-dashboard')).toBeVisible();
+
   // ---- Autofill: stub the network response; assert UI wiring and the request body ----
   await page.locator('#accordion-add-item > summary').click();
   let autofillBody: unknown = null;

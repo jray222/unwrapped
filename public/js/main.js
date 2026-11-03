@@ -7,14 +7,18 @@ import { checkCurrentSession } from './session.js';
 import { bindAuthListeners } from './listeners-auth.js';
 import { bindListListeners } from './listeners-lists.js';
 import { bindAdminListeners } from './listeners-admin.js';
+import { bindRouter } from './router.js';
+import { initMenus } from './ui.js';
 
 // Must match CACHE_NAME in /sw.js
-const CURRENT_SHELL_CACHE = 'unwrapped-v2-shell-v4';
+const CURRENT_SHELL_CACHE = 'unwrapped-v2-shell-v6';
 
 function bindEventListeners() {
   bindAuthListeners();
   bindListListeners();
   bindAdminListeners();
+  bindRouter();
+  initMenus();
 
   // Select-all on click for the TOTP secret (replaces former inline onclick="this.select()")
   document.getElementById('totp-secret-text')?.addEventListener('click', (e) => {

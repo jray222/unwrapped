@@ -4,6 +4,7 @@ import { apiFetch } from './api.js';
 import { loadNotifications } from './notifications.js';
 import { resetAuthState, showToast, showView } from './ui.js';
 import { loadFamilyWishLists } from './lists.js';
+import { handleRoute, parseHash, replaceHash } from './router.js';
 import { initAssignmentInterface, loadAssignmentDedicatedView, loadAssignmentsView } from './assignments.js';
 import { loadShareLinksView } from './share-links.js';
 import { initInstanceAdminInterface, loadFamilyAdminView, loadInstanceAdminView } from './admin.js';
@@ -168,19 +169,19 @@ export async function renderInviteBannerForToken(tokenToQuery, isAssisted = fals
       title.textContent = `🎁 Welcome to the ${info.familyName || 'Family'} Wish List!`;
       if (emailGroup && emailInput && info.email) {
         emailInput.value = info.email;
-        emailGroup.style.display = 'block';
+        emailGroup.hidden = false;
       }
       if (info.isAssistedEnrollment || isAssisted) {
         desc.textContent = `Admin-assisted enrollment for ${info.email || 'you'}. Tap below to complete your setup!`;
-        if (assistedGroup) assistedGroup.style.display = 'block';
-        if (passwordForm) passwordForm.style.display = 'none';
+        if (assistedGroup) assistedGroup.hidden = false;
+        if (passwordForm) passwordForm.hidden = true;
       } else {
         desc.textContent = `You've been invited to join ${info.familyName || 'the family'} as a ${info.role === 'family_admin' ? 'Family Admin' : 'Family Member'}. Create your account below:`;
-        if (assistedGroup) assistedGroup.style.display = 'none';
-        if (passwordForm) passwordForm.style.display = 'block';
+        if (assistedGroup) assistedGroup.hidden = true;
+        if (passwordForm) passwordForm.hidden = false;
       }
-      banner.style.display = 'block';
-      if (signInCard) signInCard.style.display = 'none';
+      banner.hidden = false;
+      if (signInCard) signInCard.hidden = true;
       setTimeout(() => document.getElementById('accept-first-name')?.focus(), 50);
       return true;
     }
@@ -214,9 +215,6 @@ export async function checkPendingInvite() {
 }
 
 export function initUserInterface() {
-  const headerControls = document.getElementById('header-user-controls');
-  if (headerControls) headerControls.style.display = 'flex';
-
   const familySelect = document.getElementById('family-selector');
   if (familySelect) {
     familySelect.innerHTML = '';
@@ -237,17 +235,51 @@ export function initUserInterface() {
   updateFamilyRoleUi();
   loadNotifications();
   showView('view-dashboard');
-  loadFamilyWishLists(state.currentFamilyId);
+  const { name } = parseHash();
+  if (name === 'shopping' || name === 'share' || (name === 'family' && state.currentFamilyRole === 'family_admin')) {
+    handleRoute();
+  } else {
+    if (name === 'family') replaceHash('#/lists');
+    loadFamilyWishLists(state.currentFamilyId);
+  }
+}
+
+export function renderShellChrome() {
+  const u = state.currentUser || {};
+  const display = u.first_name || u.firstName || (u.email ? u.email.split('@')[0] : 'Account');
+  document.querySelectorAll('[data-user-name]').forEach((el) => { el.textContent = display; });
+  document.querySelectorAll('[data-user-avatar]').forEach((el) => { el.textContent = display.charAt(0).toUpperCase(); });
+
+  const current = state.memberships.find((m) => m.family_id === state.currentFamilyId);
+  document.querySelectorAll('[data-family-name]').forEach((el) => { el.textContent = current ? current.family_name : 'Family'; });
+  document.querySelectorAll('[data-family-menu]').forEach((menu) => {
+    menu.innerHTML = '';
+    state.memberships.forEach((mem) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'menu-item';
+      item.setAttribute('role', 'menuitemradio');
+      item.setAttribute('aria-checked', String(mem.family_id === state.currentFamilyId));
+      item.textContent = mem.family_name;
+      item.addEventListener('click', () => {
+        const select = document.getElementById('family-selector');
+        if (!select || select.value === mem.family_id) return;
+        select.value = mem.family_id;
+        select.dispatchEvent(new Event('change'));
+      });
+      menu.appendChild(item);
+    });
+  });
 }
 
 export function updateFamilyRoleUi() {
   const currentMem = state.memberships.find((m) => m.family_id === state.currentFamilyId);
   state.currentFamilyRole = currentMem ? currentMem.role : 'member';
 
-  const adminNav = document.getElementById('nav-admin');
-  if (adminNav) {
-    adminNav.style.display = state.currentFamilyRole === 'family_admin' ? 'inline-flex' : 'none';
-  }
+  document.querySelectorAll('[data-nav="family"]').forEach((el) => {
+    el.hidden = state.currentFamilyRole !== 'family_admin';
+  });
+  renderShellChrome();
 
   const roleText = document.getElementById('current-user-role-text');
   if (roleText && currentMem) {

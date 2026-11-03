@@ -1,7 +1,8 @@
 // Unwrapped v2 — Offline Service Worker (Network-First for App Shell)
-const CACHE_NAME = 'unwrapped-v2-shell-v5';
+const CACHE_NAME = 'unwrapped-v2-shell-v6';
 
 const STATIC_SHELL_URLS = [
+  '/js/router.js',
   '/',
   '/index.html',
   '/styles.css',

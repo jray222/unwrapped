@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/styles.css">
   <title>Unwrapped — Family wish lists</title>
 </head>
-<body>
+<body data-shell="minimal">
 
   <!-- Offline Status & Pending Sync Banner -->
   <aside id="offline-banner" role="status" aria-live="polite">
@@ -25,32 +25,66 @@
   <!-- Notification Alerts Bar (e.g. Recipient edited claimed item) -->
   <div id="notification-bar" role="region" aria-label="Notifications"></div>
 
-  <!-- Main App Header -->
-  <header id="app-header">
-    <div class="header-container">
-      <a href="/" class="brand-wrapper" id="brand-link">
+  <!-- Minimal shell header (auth, guest, assignment, instance admin) -->
+  <header id="minimal-header">
+    <a href="/" class="brand-wrapper">
+      <span class="brand-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg></span>
+      <span class="brand-title">Unwrapped</span>
+    </a>
+  </header>
+
+  <div class="app-shell">
+    <aside id="app-sidebar" aria-label="Main">
+      <a href="/" class="brand-wrapper sidebar-brand">
         <span class="brand-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg></span>
         <span class="brand-title">Unwrapped</span>
-        <span class="brand-badge" id="app-badge">Cozy</span>
       </a>
-
-      <!-- Header Controls (Visible when logged in) -->
-      <div class="header-controls" id="header-user-controls" style="display: none;">
-        <div class="family-select-wrapper" id="family-select-wrapper">
-          <label for="family-selector" class="sr-only">Select family</label>
-          <select id="family-selector" class="family-dropdown" aria-label="Select family"></select>
+      <select id="family-selector" class="sr-only" aria-label="Select family" tabindex="-1" hidden></select>
+      <div class="sidebar-family">
+        <div class="menu-wrap">
+          <button type="button" class="menu-btn family-switch-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Switch family">
+            <span class="family-switch-name" data-family-name>Family</span><svg class="icon" aria-hidden="true"><use href="/icons.svg#chevron-down"/></svg>
+          </button>
+          <div class="menu" role="menu" data-family-menu hidden></div>
         </div>
-
-        <nav class="nav-links" aria-label="Primary Navigation">
-          <button id="nav-wishlists" class="nav-btn active" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg> Wish lists</button>
-          <button id="nav-assignments" class="nav-btn" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#shopping-bag"/></svg> Shopping</button>
-          <button id="nav-links" class="nav-btn" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#share"/></svg> Share</button>
-          <button id="nav-admin" class="nav-btn" type="button" style="display: none;"><svg class="icon" aria-hidden="true"><use href="/icons.svg#users"/></svg> Family</button>
-          <button id="nav-logout" class="nav-btn nav-btn-logout" type="button"><svg class="icon" aria-hidden="true"><use href="/icons.svg#log-out"/></svg> Sign out</button>
-        </nav>
       </div>
-    </div>
-  </header>
+      <nav class="sidebar-nav" aria-label="Primary">
+        <h2 class="nav-section-title">Wish lists</h2>
+        <div id="sidebar-lists" class="sidebar-lists"></div>
+        <button type="button" class="nav-item nav-item-ghost" id="btn-sidebar-new-list"><svg class="icon" aria-hidden="true"><use href="/icons.svg#plus"/></svg><span>New list</span></button>
+        <a class="nav-item" data-nav="shopping" href="#/shopping"><svg class="icon" aria-hidden="true"><use href="/icons.svg#shopping-bag"/></svg><span>Shopping</span></a>
+        <a class="nav-item" data-nav="share" href="#/share"><svg class="icon" aria-hidden="true"><use href="/icons.svg#share"/></svg><span>Share</span></a>
+        <a class="nav-item" id="nav-admin" data-nav="family" href="#/family" hidden><svg class="icon" aria-hidden="true"><use href="/icons.svg#users"/></svg><span>Family</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="menu-wrap">
+          <button type="button" class="menu-btn user-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu">
+            <span class="avatar" data-user-avatar aria-hidden="true">?</span><span class="user-menu-name" data-user-name>Account</span>
+          </button>
+          <div class="menu menu-up" role="menu">
+            <button type="button" class="menu-item" role="menuitem" data-action="logout"><svg class="icon" aria-hidden="true"><use href="/icons.svg#log-out"/></svg> Sign out</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="app-body">
+      <header id="app-topbar">
+        <div class="menu-wrap">
+          <button type="button" class="menu-btn family-switch-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Switch family">
+            <span class="family-switch-name" data-family-name>Family</span><svg class="icon" aria-hidden="true"><use href="/icons.svg#chevron-down"/></svg>
+          </button>
+          <div class="menu" role="menu" data-family-menu hidden></div>
+        </div>
+        <div class="menu-wrap">
+          <button type="button" class="menu-btn user-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu">
+            <span class="avatar" data-user-avatar aria-hidden="true">?</span><span class="user-menu-name" data-user-name>Account</span>
+          </button>
+          <div class="menu menu-right" role="menu">
+            <button type="button" class="menu-item" role="menuitem" data-action="logout"><svg class="icon" aria-hidden="true"><use href="/icons.svg#log-out"/></svg> Sign out</button>
+          </div>
+        </div>
+      </header>
 
   <!-- Main Container -->
   <main id="main-content">
@@ -66,18 +100,18 @@
       </div>
 
       <!-- Invite Acceptance / Assisted Enrollment Banner (When redirected from invite) -->
-      <div id="subview-invite-accept" class="card max-540" style="display: none;">
+      <div id="subview-invite-accept" class="card max-540" hidden>
         <h2 id="invite-welcome-title">You've been invited</h2>
         <p id="invite-welcome-desc">Finish setting up your account to join your family wish list.</p>
 
-        <div id="assisted-passkey-group" class="form-group" style="display: none;">
+        <div id="assisted-passkey-group" class="form-group" hidden>
           <button id="btn-accept-with-passkey" class="btn btn-primary btn-full" type="button">
             <svg class="icon" aria-hidden="true"><use href="/icons.svg#key"/></svg> Finish setup with a passkey
           </button>
         </div>
 
         <form id="form-accept-invite-password">
-          <div class="form-group" id="group-invite-email-display" style="display: none;">
+          <div class="form-group" id="group-invite-email-display" hidden>
             <label for="accept-email-readonly">Invited email address</label>
             <input type="email" id="accept-email-readonly" readonly>
           </div>
@@ -140,7 +174,7 @@
           </div>
 
           <!-- Multi-Factor Authentication Step (Hidden until password verified) -->
-          <div id="mfa-step" class="mfa-step" style="display: none;">
+          <div id="mfa-step" class="mfa-step" hidden>
             <h3>Two-step verification</h3>
             <p>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
             
@@ -198,7 +232,7 @@
       <div id="active-list-container">
 
         <!-- Surprise Rule Active Banner (When viewing own list) -->
-        <div id="surprise-rule-banner" class="surprise-banner" style="display: none;">
+        <div id="surprise-rule-banner" class="surprise-banner" hidden>
           <div class="surprise-banner-icon" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="/icons.svg#lock"/></svg></div>
           <div class="surprise-banner-text">
             <h4>Surprise protection is on</h4>
@@ -207,7 +241,7 @@
         </div>
 
         <!-- Reveal Thank-You List Box (When viewing own list after event) -->
-        <div id="reveal-thank-you-box" class="reveal-box" style="display: none;">
+        <div id="reveal-thank-you-box" class="reveal-box" hidden>
           <h3>The event has passed. Ready for thank-you notes?</h3>
           <p>Thank-you mode shows who claimed or contributed to each gift so you can thank them.</p>
           <button id="btn-reveal-thank-you" class="btn btn-primary" type="button">
@@ -309,7 +343,7 @@
         <div id="items-available-container" class="items-grid"></div>
 
         <!-- Collapsed "Already Taken" Accordion -->
-        <details id="already-taken-accordion" class="already-taken-accordion" style="display: none;">
+        <details id="already-taken-accordion" class="already-taken-accordion" hidden>
           <summary class="already-taken-summary">
             <span><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg> Already taken (<span id="already-taken-count">0</span> gifts)</span>
             <svg class="icon" aria-hidden="true"><use href="/icons.svg#chevron-down"/></svg>
@@ -560,6 +594,15 @@
 
   </main>
 
+      <nav id="app-tabbar" aria-label="Primary">
+        <a class="tab-item" data-nav="lists" href="#/lists"><svg class="icon" aria-hidden="true"><use href="/icons.svg#gift"/></svg><span>Lists</span></a>
+        <a class="tab-item" data-nav="shopping" href="#/shopping"><svg class="icon" aria-hidden="true"><use href="/icons.svg#shopping-bag"/></svg><span>Shopping</span></a>
+        <a class="tab-item" data-nav="share" href="#/share"><svg class="icon" aria-hidden="true"><use href="/icons.svg#share"/></svg><span>Share</span></a>
+        <a class="tab-item" data-nav="family" href="#/family" hidden><svg class="icon" aria-hidden="true"><use href="/icons.svg#users"/></svg><span>Family</span></a>
+      </nav>
+    </div>
+  </div>
+
   <!-- ======================================================================
        ACCESSIBLE MODALS CONTAINER
        ====================================================================== -->
@@ -688,7 +731,7 @@
             </select>
           </div>
 
-          <div class="form-group" id="group-recipient-name" style="display: none;">
+          <div class="form-group" id="group-recipient-name" hidden>
             <label for="list-recipient-name">Recipient first name *</label>
             <input type="text" id="list-recipient-name" placeholder="Tommy">
           </div>
@@ -754,7 +797,7 @@
             </div>
           </form>
         </div>
-        <div id="totp-setup-step-2" style="display: none;">
+        <div id="totp-setup-step-2" hidden>
           <h4 class="success-heading">Two-step sign-in is on</h4>
           <p>Save these <strong>8 recovery codes</strong> somewhere safe. Each one works once if you lose your authenticator app.</p>
           <div id="totp-recovery-codes-box" class="recovery-codes"></div>

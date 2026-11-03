@@ -5,9 +5,7 @@ import { apiFetch } from './api.js';
 import { closeActiveModal, openModal, resetAuthState, showToast, showView } from './ui.js';
 import { checkCurrentSession, openInviteWithToken, updateFamilyRoleUi } from './session.js';
 import { loadFamilyWishLists } from './lists.js';
-import { loadAssignmentsView } from './assignments.js';
-import { loadShareLinksView } from './share-links.js';
-import { loadFamilyAdminView } from './admin.js';
+import { navigate, parseHash, replaceHash } from './router.js';
 import { handlePasskeyLogin, handlePasskeyRegister, startTotpEnrollment } from './passkeys.js';
 
 export function bindAuthListeners() {
@@ -21,33 +19,34 @@ export function bindAuthListeners() {
   document.getElementById('btn-sync-now')?.addEventListener('click', syncOfflineQueue);
 
   // Brand Link / Home
-  document.getElementById('brand-link')?.addEventListener('click', (e) => {
+  document.querySelectorAll('.brand-wrapper').forEach((link) => link.addEventListener('click', (e) => {
     e.preventDefault();
-    if (state.sessionKind === 'user') showView('view-dashboard');
+    if (state.sessionKind === 'user') navigate('#/lists');
     else if (state.sessionKind === 'instance_admin') showView('view-instance-admin');
     else showView('view-auth');
-  });
+  }));
 
-  // Family Selector
+  // Family Selector (source of truth; the switcher menus dispatch 'change' on it)
   document.getElementById('family-selector')?.addEventListener('change', (e) => {
     state.currentFamilyId = e.target.value;
+    state.currentList = null;
+    state.currentListId = null;
     updateFamilyRoleUi();
+    if (parseHash().name === 'lists') replaceHash('#/lists');
+    else navigate('#/lists');
     loadFamilyWishLists(state.currentFamilyId);
   });
 
-  // Navigation Buttons
-  document.getElementById('nav-wishlists')?.addEventListener('click', () => showView('view-dashboard'));
-  document.getElementById('nav-assignments')?.addEventListener('click', loadAssignmentsView);
-  document.getElementById('nav-links')?.addEventListener('click', loadShareLinksView);
-  document.getElementById('nav-admin')?.addEventListener('click', loadFamilyAdminView);
+  // New list (sidebar)
+  document.getElementById('btn-sidebar-new-list')?.addEventListener('click', () => openModal('modal-create-list'));
 
-  // Logout Button
-  document.getElementById('nav-logout')?.addEventListener('click', async () => {
+  // Sign out (sidebar footer and phone top bar avatar menus)
+  document.querySelectorAll('[data-action="logout"]').forEach((btn) => btn.addEventListener('click', async () => {
     await apiFetch('/api/auth/logout', { method: 'POST' });
     resetAuthState();
     showView('view-auth');
     showToast('Signed out successfully.');
-  });
+  }));
 
   // Passkey Login Button
   document.getElementById('btn-passkey-login')?.addEventListener('click', handlePasskeyLogin);
@@ -75,9 +74,9 @@ export function bindAuthListeners() {
         showToast('Mandatory 2FA setup required. Please enroll an authenticator app.');
         startTotpEnrollment();
       } else if (data.mfaRequired || data.mfa_required) {
-        document.getElementById('mfa-step').style.display = 'block';
-        document.getElementById('group-password').style.display = 'none';
-        document.getElementById('btn-submit-login').style.display = 'none';
+        document.getElementById('mfa-step').hidden = false;
+        document.getElementById('group-password').hidden = true;
+        document.getElementById('btn-submit-login').hidden = true;
         showToast('Please enter your 2FA authenticator code or recovery code.');
       } else {
         checkCurrentSession();
@@ -132,8 +131,8 @@ export function bindAuthListeners() {
       const step2 = document.getElementById('totp-setup-step-2');
       const codesBox = document.getElementById('totp-recovery-codes-box');
 
-      if (step1) step1.style.display = 'none';
-      if (step2) step2.style.display = 'block';
+      if (step1) step1.hidden = true;
+      if (step2) step2.hidden = false;
       if (codesBox && Array.isArray(data.recoveryCodes)) {
         codesBox.innerHTML = data.recoveryCodes
           .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
@@ -169,8 +168,8 @@ export function bindAuthListeners() {
             const step1 = document.getElementById('totp-setup-step-1');
             const step2 = document.getElementById('totp-setup-step-2');
             const codesBox = document.getElementById('totp-recovery-codes-box');
-            if (step1) step1.style.display = 'none';
-            if (step2) step2.style.display = 'block';
+            if (step1) step1.hidden = true;
+            if (step2) step2.hidden = false;
             if (codesBox) {
               codesBox.innerHTML = data.recoveryCodes
                 .map((c) => `<div class="recovery-code-pill" style="background:#fff;padding:0.4rem;border-radius:4px;border:1px solid #ccc;text-align:center;">${c}</div>`)
@@ -223,7 +222,7 @@ export function bindAuthListeners() {
       state.currentUser = data.user;
       state.csrfToken = data.csrfToken || '';
       showToast('Welcome to the family! Please complete Two-Factor Authentication setup.');
-      document.getElementById('subview-invite-accept').style.display = 'none';
+      document.getElementById('subview-invite-accept').hidden = true;
       if (data.mfaEnrollmentRequired) {
         startTotpEnrollment();
       } else {
@@ -242,8 +241,8 @@ export function bindAuthListeners() {
     await apiFetch('/api/links/clear-pending', { method: 'POST' }).catch(() => {});
     const banner = document.getElementById('subview-invite-accept');
     const signInCard = document.getElementById('card-signin');
-    if (banner) banner.style.display = 'none';
-    if (signInCard) signInCard.style.display = 'block';
+    if (banner) banner.hidden = true;
+    if (signInCard) signInCard.hidden = false;
   });
 
   // Manual Invite Link / Token Redeem Form

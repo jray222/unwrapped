@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { apiFetch } from './api.js';
 import { openModal } from './ui.js';
+import { listIdFromHash, replaceHash } from './router.js';
 import { createItemCard } from './items.js';
 
 export async function loadFamilyWishLists(familyId) {
@@ -14,7 +15,8 @@ export async function loadFamilyWishLists(familyId) {
     renderListsTabs();
 
     if (state.lists.length > 0) {
-      selectWishList(state.lists[0].id);
+      const wanted = [listIdFromHash(), state.currentListId].find((id) => id && state.lists.some((l) => l.id === id));
+      selectWishList(wanted || state.lists[0].id);
     } else {
       renderEmptyListState();
     }
@@ -25,21 +27,49 @@ export async function loadFamilyWishLists(familyId) {
 
 export function renderListsTabs() {
   const bar = document.getElementById('lists-tabs-bar');
-  if (!bar) return;
-  bar.innerHTML = '';
+  const side = document.getElementById('sidebar-lists');
+  if (bar) bar.innerHTML = '';
+  if (side) side.innerHTML = '';
+  const dashboardActive = document.getElementById('view-dashboard')?.classList.contains('is-active');
 
   state.lists.forEach((list) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `list-tab-btn ${state.currentList && state.currentList.id === list.id ? 'is-active' : ''}`;
-    btn.textContent = `${list.name} (${list.recipient_first_name})`;
-    btn.addEventListener('click', () => selectWishList(list.id));
-    bar.appendChild(btn);
+    const active = state.currentListId === list.id;
+    const href = `#/lists/${encodeURIComponent(list.id)}`;
+    const recipient = list.recipient_first_name || '';
+
+    if (bar) {
+      const chip = document.createElement('a');
+      chip.href = href;
+      chip.className = `list-tab-btn ${active ? 'is-active' : ''}`;
+      chip.textContent = `${list.name} (${recipient})`;
+      if (active && dashboardActive) chip.setAttribute('aria-current', 'page');
+      bar.appendChild(chip);
+    }
+
+    if (side) {
+      const row = document.createElement('a');
+      row.href = href;
+      row.className = `nav-item nav-list-row ${active ? 'is-active' : ''}`;
+      if (active && dashboardActive) row.setAttribute('aria-current', 'page');
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.textContent = (recipient || list.name || '?').charAt(0).toUpperCase();
+      const name = document.createElement('span');
+      name.className = 'nav-list-name';
+      name.textContent = list.name;
+      const who = document.createElement('span');
+      who.className = 'nav-list-recipient';
+      who.textContent = recipient;
+      row.append(avatar, name, who);
+      side.appendChild(row);
+    }
   });
 }
 
 export async function selectWishList(listId) {
   state.currentListId = listId;
+  replaceHash(`#/lists/${encodeURIComponent(listId)}`);
   renderListsTabs();
 
   try {
@@ -80,10 +110,10 @@ export function renderActiveWishList() {
   const revealBox = document.getElementById('reveal-thank-you-box');
 
   if (surpriseBanner) {
-    surpriseBanner.style.display = isSurpriseProtected ? 'flex' : 'none';
+    surpriseBanner.hidden = !(isSurpriseProtected);
   }
   if (revealBox) {
-    revealBox.style.display = isOwner && !list.thank_you_revealed ? 'block' : 'none';
+    revealBox.hidden = !(isOwner && !list.thank_you_revealed);
   }
 
   // 2. Render Items
@@ -112,7 +142,7 @@ export function renderActiveWishList() {
 
   if (takenAccordion && takenCountSpan) {
     takenCountSpan.textContent = takenCount;
-    takenAccordion.style.display = takenCount > 0 && !isSurpriseProtected ? 'block' : 'none';
+    takenAccordion.hidden = !(takenCount > 0 && !isSurpriseProtected);
   }
 }
 
