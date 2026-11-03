@@ -116,6 +116,12 @@ export function renderActiveWishList() {
     (list.recipient_user_id === state.currentUser.id ||
      list.owner_user_id === state.currentUser.id)
   );
+  const isFamilyAdmin = Boolean(
+    state.memberships?.some(
+      (m) => m.family_id === state.currentFamilyId && m.role === 'family_admin'
+    )
+  );
+  const canManageList = isOwner || isFamilyAdmin;
   const isSurpriseProtected = isOwner && !list.thank_you_revealed;
 
   // 1. Header, surprise notice and reveal card
@@ -157,9 +163,9 @@ export function renderActiveWishList() {
 
     if (isTaken && !isSurpriseProtected) {
       takenCount++;
-      takenContainer.appendChild(createItemCard(item, { isTaken: true, isSurpriseProtected }));
+      takenContainer.appendChild(createItemCard(item, { isTaken: true, isSurpriseProtected, canManageList }));
     } else {
-      availableContainer.appendChild(createItemCard(item, { isTaken: false, isSurpriseProtected }));
+      availableContainer.appendChild(createItemCard(item, { isTaken: false, isSurpriseProtected, canManageList }));
     }
   });
 

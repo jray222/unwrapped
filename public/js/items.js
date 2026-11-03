@@ -15,7 +15,24 @@ function dollars(cents, digits = 2) {
   return `$${(cents / 100).toFixed(digits)}`;
 }
 
-export function createItemCard(item, { isTaken, isSurpriseProtected }) {
+export function openEditItemModal(item) {
+  const modal = document.getElementById('modal-edit-item');
+  if (!modal) return;
+  document.getElementById('edit-item-id').value = item.id || '';
+  document.getElementById('edit-item-name').value = item.name || '';
+  document.getElementById('edit-item-price').value =
+    item.price_cents != null ? (item.price_cents / 100).toFixed(2) : '';
+  document.getElementById('edit-item-store-name').value = item.store_name || '';
+  document.getElementById('edit-item-store-url').value = item.store_url || '';
+  document.getElementById('edit-item-image-url').value = item.image_url || '';
+  document.getElementById('edit-item-notes').value = item.notes || '';
+  document.getElementById('edit-item-priority').value = item.priority || 'nice_to_have';
+  document.getElementById('edit-item-quantity').value = item.quantity || 1;
+  document.getElementById('edit-item-allow-duplicates').checked = Boolean(item.allow_duplicates);
+  openModal('modal-edit-item', { item });
+}
+
+export function createItemCard(item, { isTaken, isSurpriseProtected, canManageList = false }) {
   const card = document.createElement('article');
   card.className = `item-card ${item.priority === 'really_want' ? 'is-featured' : ''}`.trim();
 
@@ -59,9 +76,12 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
     }
   };
 
-  // Overflow menu: Pledge / Assign / Open store / shopping cards.
+  // Overflow menu: Edit / Pledge / Assign / Open store / shopping cards.
   // Pledge and Assign are giver-only, so they never exist on the recipient's own list.
   const menuItems = [];
+  if (canManageList) {
+    menuItems.push({ label: 'Edit item', icon: 'pencil', onClick: () => openEditItemModal(item) });
+  }
   if (!isSurpriseProtected) {
     menuItems.push({ label: 'Pledge toward this', icon: 'coins', onClick: () => openModal('modal-pledge', { item }) });
     menuItems.push({ label: 'Assign to a relative', icon: 'user', onClick: () => openModal('modal-assign', { item }) });
@@ -155,6 +175,23 @@ export function createItemCard(item, { isTaken, isSurpriseProtected }) {
       btnClaim.append(document.createTextNode('Claim'));
       btnClaim.addEventListener('click', () => handleClaimItem(item.id));
       actions.appendChild(btnClaim);
+    }
+  } else if (canManageList) {
+    const btnEdit = document.createElement('button');
+    btnEdit.type = 'button';
+    btnEdit.className = 'btn btn-secondary btn-sm';
+    btnEdit.innerHTML = icon('pencil');
+    btnEdit.append(document.createTextNode('Edit'));
+    btnEdit.addEventListener('click', () => openEditItemModal(item));
+    actions.appendChild(btnEdit);
+    if (item.store_url) {
+      const btnStore = document.createElement('button');
+      btnStore.type = 'button';
+      btnStore.className = 'btn btn-secondary btn-sm';
+      btnStore.innerHTML = icon('external-link');
+      btnStore.append(document.createTextNode('Open store'));
+      btnStore.addEventListener('click', openStore);
+      actions.appendChild(btnStore);
     }
   } else if (item.store_url) {
     const btnStore = document.createElement('button');
