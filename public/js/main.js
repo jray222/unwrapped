@@ -11,7 +11,7 @@ import { bindRouter } from './router.js';
 import { initMenus } from './ui.js';
 
 // Must match CACHE_NAME in /sw.js
-const CURRENT_SHELL_CACHE = 'unwrapped-v2-shell-v7';
+const CURRENT_SHELL_CACHE = 'unwrapped-v2-shell-v8';
 
 function bindEventListeners() {
   bindAuthListeners();

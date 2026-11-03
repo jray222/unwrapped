@@ -88,6 +88,71 @@ export function bindListListeners() {
     }
   });
 
+  // Edit Item Form
+  document.getElementById('form-edit-item')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.currentListId) return;
+    const itemId = document.getElementById('edit-item-id').value;
+    if (!itemId) return;
+
+    const name = document.getElementById('edit-item-name').value.trim();
+    const priceStr = document.getElementById('edit-item-price').value.trim();
+    const priceCents = priceStr ? Math.round(parseFloat(priceStr) * 100) : null;
+    const storeName = document.getElementById('edit-item-store-name').value.trim();
+    const storeUrl = document.getElementById('edit-item-store-url').value.trim();
+    const imageUrl = document.getElementById('edit-item-image-url').value.trim();
+    const notes = document.getElementById('edit-item-notes').value.trim();
+    const priority = document.getElementById('edit-item-priority').value;
+    const quantity = parseInt(document.getElementById('edit-item-quantity').value, 10) || 1;
+    const allowDuplicates = document.getElementById('edit-item-allow-duplicates').checked;
+
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name,
+        priceCents,
+        storeName,
+        storeUrl,
+        imageUrl,
+        notes,
+        priority,
+        quantity,
+        allowDuplicates,
+      }),
+    });
+
+    if (res && res.ok) {
+      showToast('Item updated.');
+      closeActiveModal();
+      selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to update item');
+    }
+  });
+
+  // Delete Item Button (inside Edit item sheet)
+  document.getElementById('btn-delete-item')?.addEventListener('click', async () => {
+    if (!state.currentListId) return;
+    const itemId = document.getElementById('edit-item-id').value;
+    if (!itemId) return;
+
+    if (!confirm('Are you sure you want to remove this item from the list?')) return;
+
+    const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${state.currentListId}/items/${itemId}`, {
+      method: 'DELETE',
+    });
+
+    if (res && res.ok) {
+      showToast('Item removed.');
+      closeActiveModal();
+      selectWishList(state.currentListId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to remove item');
+    }
+  });
+
   // Modal Close Buttons
   document.querySelectorAll('.btn-close-modal').forEach((btn) => {
     btn.addEventListener('click', closeActiveModal);
