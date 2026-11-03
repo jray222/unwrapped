@@ -105,9 +105,17 @@ function renderLinkList(containerId, links, build) {
   container.innerHTML = '';
   const list = Array.isArray(links) ? links : [];
   if (list.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'form-hint';
-    empty.textContent = 'No links yet.';
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `${icon('link')}<h3>No links yet</h3><p>Share a link so someone can view a list without an account.</p>`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-primary';
+    btn.textContent = containerId === 'guest-links-list' ? 'Create a guest link' : 'Create a shopping link';
+    btn.addEventListener('click', () => {
+      document.getElementById(containerId === 'guest-links-list' ? 'guest-first-name' : 'assignee-first-name')?.focus();
+    });
+    empty.appendChild(btn);
     container.appendChild(empty);
     return;
   }

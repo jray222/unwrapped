@@ -1209,11 +1209,11 @@ a.menu-item { text-decoration: none; }
 .empty-state h3 { color: var(--ink); }
 .empty-state p { margin-bottom: var(--space-4); }
 
-/* Toast */
+/* Toast: bottom center, above the phone tab bar; top center while a sheet is open */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: var(--space-5);
+  bottom: calc(56px + var(--space-3) + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 2000;
   max-width: min(420px, calc(100vw - 2 * var(--space-4)));
@@ -1225,6 +1225,37 @@ a.menu-item { text-decoration: none; }
   font-size: 1rem;
   font-weight: 500;
   text-align: center;
+}
+body[data-shell="minimal"] .toast { bottom: calc(var(--space-5) + env(safe-area-inset-bottom)); }
+@media (min-width: 960px) {
+  .toast { bottom: var(--space-5); }
+}
+body:has(.modal-overlay.is-active) .toast {
+  bottom: auto;
+  top: calc(var(--space-4) + env(safe-area-inset-top));
+}
+
+/* Skeleton loading cards */
+.skeleton-card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.skeleton-line {
+  height: 0.9rem;
+  width: 70%;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--hairline);
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+.skeleton-line-lg { height: 1.2rem; width: 50%; }
+.skeleton-line-sm { width: 35%; }
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 /* Modals & Dialogs: bottom sheet on phones, centered dialog above */
@@ -1434,6 +1465,7 @@ tr:last-child td { border-bottom: none; }
   #app-sidebar,
   #app-topbar,
   #app-tabbar,
+  .skeleton-card,
   #offline-banner,
   #notification-bar,
   .btn,

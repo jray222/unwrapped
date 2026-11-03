@@ -5,8 +5,18 @@ import { icon, openModal } from './ui.js';
 import { listIdFromHash, replaceHash } from './router.js';
 import { createItemCard } from './items.js';
 
+/** Simple placeholder cards while lists or items load. */
+export function renderSkeletons(container, count = 3) {
+  if (!container) return;
+  container.innerHTML = Array.from({ length: count }, () => (
+    '<div class="skeleton-card" aria-hidden="true"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-line-sm"></div></div>'
+  )).join('');
+  container.setAttribute('aria-busy', 'true');
+}
+
 export async function loadFamilyWishLists(familyId) {
   if (!familyId) return;
+  if (!state.lists.length) renderSkeletons(document.getElementById('items-available-container'));
   try {
     const res = await apiFetch(`/api/families/${familyId}/lists`);
     if (!res || !res.ok) return;
@@ -79,6 +89,9 @@ export async function selectWishList(listId) {
     else if (state.currentPriceFilter === '50to100') query = '?minPriceCents=5000&maxPriceCents=10000';
     else if (state.currentPriceFilter === '100plus') query = '?minPriceCents=10000';
 
+    if (!state.currentList || state.currentList.id !== listId) {
+      renderSkeletons(document.getElementById('items-available-container'));
+    }
     const res = await apiFetch(`/api/families/${state.currentFamilyId}/lists/${listId}${query}`);
     if (!res || !res.ok) return;
     const data = await res.json();
@@ -122,9 +135,21 @@ export function renderActiveWishList() {
 
   if (!availableContainer || !takenContainer) return;
   availableContainer.innerHTML = '';
+  availableContainer.removeAttribute('aria-busy');
   takenContainer.innerHTML = '';
 
   const items = list.items || [];
+  if (items.length === 0) {
+    availableContainer.innerHTML = `
+      <div class="empty-state">
+        ${icon('gift')}
+        <h3>No items yet</h3>
+        <p>${isOwner ? 'Add the first thing you would love to receive.' : 'Add the first idea to this list.'}</p>
+        <button type="button" id="btn-empty-add-item" class="btn btn-primary">Add item</button>
+      </div>
+    `;
+    document.getElementById('btn-empty-add-item')?.addEventListener('click', () => openModal('modal-add-item'));
+  }
   let takenCount = 0;
 
   items.forEach((item) => {
@@ -183,6 +208,7 @@ export function renderEmptyListState() {
   if (actions) actions.hidden = true;
   const container = document.getElementById('items-available-container');
   if (container) {
+    container.removeAttribute('aria-busy');
     container.innerHTML = `
       <div class="empty-state">
         ${icon('gift')}

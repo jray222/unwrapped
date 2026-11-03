@@ -1,4 +1,5 @@
 /** Assignments tab and dedicated assignment view. */
+import { renderSkeletons } from './lists.js';
 import { state } from './state.js';
 import { enqueueOfflineAction } from './offline.js';
 import { apiFetch } from './api.js';
@@ -8,7 +9,7 @@ export async function loadAssignmentsView() {
   showView('view-assignments');
   const container = document.getElementById('assignments-list');
   if (!container) return;
-  container.innerHTML = '<p>Loading your shopping list...</p>';
+  renderSkeletons(container, 2);
 
   try {
     const endpoint = state.sessionKind === 'assignment'
@@ -108,11 +109,13 @@ export function createAssignmentRow(assign, { allowShare = true } = {}) {
 }
 
 function emptyChecklist(container, title, text) {
+  container.removeAttribute('aria-busy');
   container.innerHTML = `
     <div class="empty-state">
       ${icon('shopping-bag')}
       <h3>${title}</h3>
       <p>${text}</p>
+      <a href="#/lists" class="btn btn-primary">Browse wish lists</a>
     </div>
   `;
 }
@@ -192,7 +195,7 @@ export async function initAssignmentInterface(assignmentLink) {
 export async function loadAssignmentDedicatedView() {
   const container = document.getElementById('assignment-dedicated-list');
   if (!container) return;
-  container.innerHTML = '<p>Loading your shopping list...</p>';
+  renderSkeletons(container, 2);
 
   try {
     const res = await apiFetch('/api/assignment/view');

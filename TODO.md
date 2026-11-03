@@ -1,5 +1,12 @@
 # Unwrapped UI Overhaul: Refined Warm look + Sidebar Navigation
 
+**Status: Phases 1-5 done.**
+
+## Follow-ups
+- Security settings view (manage 2FA, passkeys, recovery codes). Needed before the avatar-menu "Security" item can exist, because `startTotpEnrollment()` would overwrite existing 2FA.
+- The toast moves to the top of the screen while a sheet or dialog is open (instead of sitting above the sheet footer).
+- Manual offline check (DevTools offline toggle for shell, fonts, icons) and a full 390px/1280px screenshot sweep of every view were not done; only the giver list and Shopping page were captured.
+
 > **Immediate step (once approved):** copy this plan to `TODO.md` at the repo root. Then `git checkout main` (the repo is on a detached HEAD at 6f24bde with a clean tree), `git pull`, commit only `TODO.md` as "docs: add UI overhaul TODO" with the Co-Authored-By line, and `git push origin main`. Stop there. The implementation phases below wait for a separate go-ahead.
 
 ## Context
@@ -41,7 +48,7 @@ Constraints we keep:
    - The content-blind policy note in instance admin becomes one plain sentence ("You can manage families but can't see their lists or gifts.").
    - Check: `grep -inE 'postgres|hashed|zero-footprint|app_instance|ssrf' public/` returns no user-facing strings.
 
-## Design system (Phase 1)
+## Design system (Phase 1) - done
 - **Tokens** (rewrite `:root` in `public/styles.css`):
   - Neutrals: warm paper `#FBF8F3`, surface `#FFFFFF`, ink `#1F2A24`, muted `#5B6660`, hairline `#E7E1D6`.
   - Primary: pine `#1E4D3A` with hover and soft tints.
@@ -54,7 +61,7 @@ Constraints we keep:
   - `.field`/`.input`, `.card`, `.tag`, `.segmented` (price filter), `.empty-state`, `.toast` (replacing the inline styles in `ui.js:showToast`), `.menu` (avatar/overflow dropdown), `.avatar` (initials).
   - Modals become **bottom sheets on phones** (<640px) and centered dialogs on desktop. Keep the existing `openModal`/`closeActiveModal` API in `ui.js`. Add Esc and backdrop-click close plus a focus return if they're missing.
 
-## App shell & navigation (Phase 2)
+## App shell & navigation (Phase 2) - done
 New layout in `index.html`: `<div class="app-shell">` holds `<aside id="app-sidebar">`, `<header id="app-topbar">`, `<main>` and `<nav id="app-tabbar">`.
 
 - **Desktop (≥960px), fixed 272px sidebar:**
@@ -72,7 +79,7 @@ New layout in `index.html`: `<div class="app-shell">` holds `<aside id="app-side
   - Guest (`/guest`), assignment (`/assignment`), auth and instance admin views keep a **minimal shell** with no sidebar or tabs (toggle a `body[data-shell="app|minimal"]` attribute where `session.js:217` currently toggles `#header-user-controls`).
 - The offline banner becomes a slim bar inside the shell. The notification bar becomes a stacked card list under the page header.
 
-## Pages (Phase 3–4)
+## Pages (Phase 3–4) - done
 - **Wish list page** (`view-dashboard`):
   - **Header:** list name in Fraunces, then "For {recipient} · {event date, 'in 12 days'}", then the item count.
   - **Actions:** primary **Add item**, secondary **Share**, and an overflow menu (Reveal givers when that applies).
@@ -96,7 +103,7 @@ New layout in `index.html`: `<div class="app-shell">` holds `<aside id="app-side
 - **Guest / Assignment / Instance admin**: the same components in the minimal shell.
 - **Copy pass:** remove the internals jargon and the emoji. Use sentence-case headings ("Share lists", not "🔗 Share Wish Lists With Family & Guests").
 
-## Polish (Phase 5)
+## Polish (Phase 5) - done
 - Empty states (no lists, no items, no assignments) with an icon, a sentence and a single action. Replace `renderEmptyListState` in `lists.js`.
 - Skeleton loading cards while lists and items load.
 - Toast restyled at the bottom center (above the tab bar on phones), with `role="status"`.
@@ -114,7 +121,7 @@ New layout in `index.html`: `<div class="app-shell">` holds `<aside id="app-side
 - `public/sw.js`, `e2e/smoke.spec.ts`
 
 ## Verification
-1. `npm run build` (tsc) and `npm test`: all 47 must still pass. The backend is untouched, so this guards against accidental changes.
+1. `npm run build` (tsc) and `npm test`: all 56 must still pass. The backend is untouched, so this guards against accidental changes.
 2. Update `e2e/smoke.spec.ts`: the add-item step opens the sheet via the new **Add item** button instead of `#accordion-add-item > summary`. Add nav checks: click the sidebar Shopping item, assert `#view-assignments` is visible and the URL hash is `#/shopping`, go back, assert the dashboard is visible. Run `npm run test:e2e`.
 3. Run `npm run dev` and screenshot with Playwright at **390×844** and **1280×800** for auth, dashboard (as giver and as recipient), add-item sheet, shopping, share, family and guest. Confirm:
    - no horizontal scroll and no CSP errors in the console;
