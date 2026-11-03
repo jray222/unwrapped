@@ -961,12 +961,58 @@ a.menu-item { text-decoration: none; }
 @media (min-width: 1100px) { .items-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 .item-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+}
+.item-card.is-swipeable {
+  background: var(--cranberry);
+}
+.item-card.is-swiping,
+.item-card.is-snapped {
+  overflow: hidden;
+}
+
+.item-card-inner {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--radius-lg) - 1px);
+  position: relative;
+  z-index: 1;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: pan-y;
+}
+
+.swipe-delete-action {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  background: var(--cranberry);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--space-4);
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  border: none;
+  cursor: pointer;
+  z-index: 0;
+}
+.swipe-delete-action .icon {
+  width: 22px;
+  height: 22px;
+  stroke: #FFFFFF;
 }
 
 .item-image-wrapper {
