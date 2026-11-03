@@ -1,0 +1,96 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-unwrapped}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unwrapped_postgres_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-unwrapped}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: ghcr.io/jray222/unwrapped:latest
+    build:
+      context: .
+      target: prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-unwrapped_postgres_password}@db:5432/${POSTGRES_DB:-unwrapped}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production-session-secret-32b}
+      BOOTSTRAP_INSTANCE_ADMIN_TOKEN: ${BOOTSTRAP_INSTANCE_ADMIN_TOKEN:-change-me-instance-admin-bootstrap-token}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-Unwrapped Family Wish List}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      APP_ORIGIN: ${APP_ORIGIN:-https://localhost:38443}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    ports:
+      - "${HTTP_PORT:-38180}:80"
+      - "${HTTPS_PORT:-38443}:443"
+      - "${HTTPS_PORT:-38443}:443/udp"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        cat <<'EOF' > /etc/caddy/Caddyfile
+        {
+            on_demand_tls {
+                ask http://app:3000/api/health
+            }
+        }
+        http://:80 {
+            encode zstd gzip
+            header {
+                Referrer-Policy "no-referrer"
+                X-Content-Type-Options "nosniff"
+                X-Frame-Options "DENY"
+                -Server
+            }
+            reverse_proxy app:3000 {
+                header_up Host {http.request.hostport}
+            }
+        }
+        https://:443 {
+            tls internal {
+                on_demand
+            }
+            encode zstd gzip
+            header {
+                Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                Referrer-Policy "no-referrer"
+                X-Content-Type-Options "nosniff"
+                X-Frame-Options "DENY"
+                -Server
+            }
+            reverse_proxy app:3000 {
+                header_up Host {http.request.hostport}
+            }
+        }
+        EOF
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

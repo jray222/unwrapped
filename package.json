@@ -1,0 +1,38 @@
+{
+  "name": "unwrapped",
+  "version": "1.0.0",
+  "description": "Self-hosted, invite-only multi-family gift wish list app with strict privacy and surprise protection",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@simplewebauthn/server": "^10.0.1",
+    "cheerio": "^1.0.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "otplib": "^12.0.1",
+    "pdfkit": "^0.15.2",
+    "pg": "^8.13.3",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.4",
+    "@types/pdfkit": "^0.13.5",
+    "@types/pg": "^8.11.11",
+    "@types/qrcode": "^1.5.5",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

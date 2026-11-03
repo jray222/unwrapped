@@ -1,0 +1,18 @@
+{
+  "name": "Unwrapped — Family Wish List",
+  "short_name": "Unwrapped",
+  "description": "Cozy, private, and surprise-safe family wish list app with offline shopping support.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#1B4332",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

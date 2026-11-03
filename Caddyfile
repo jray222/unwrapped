@@ -1,0 +1,16 @@
+# Caddy Automatic HTTPS Reverse Proxy for Unwrapped v2
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    # Strict Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
+    # Reverse proxy to the Unwrapped Node.js application container
+    reverse_proxy app:3000
+}

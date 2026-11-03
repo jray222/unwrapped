@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1B4332" />
+      <stop offset="100%" stop-color="#0F281E" />
+    </linearGradient>
+    <linearGradient id="ribbonGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="berryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E11D48" />
+      <stop offset="100%" stop-color="#9B2226" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded Box Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+  
+  <!-- Subtle Snowflakes -->
+  <g fill="#FAF7F2" opacity="0.3">
+    <circle cx="80" cy="90" r="8" />
+    <circle cx="430" cy="110" r="6" />
+    <circle cx="420" cy="420" r="9" />
+    <circle cx="95" cy="390" r="7" />
+  </g>
+
+  <!-- Gift Box Base -->
+  <rect x="106" y="210" width="300" height="210" rx="20" fill="url(#berryGrad)" />
+  
+  <!-- Gift Box Lid -->
+  <rect x="91" y="165" width="330" height="60" rx="14" fill="#B91C1C" />
+
+  <!-- Vertical Ribbon -->
+  <rect x="226" y="165" width="60" height="255" fill="url(#ribbonGold)" />
+  
+  <!-- Horizontal Ribbon -->
+  <rect x="106" y="285" width="300" height="50" fill="url(#ribbonGold)" />
+
+  <!-- Ribbon Bow Left -->
+  <path d="M 240 165 C 160 80, 120 130, 230 165 Z" fill="url(#ribbonGold)" />
+  <!-- Ribbon Bow Right -->
+  <path d="M 272 165 C 352 80, 392 130, 282 165 Z" fill="url(#ribbonGold)" />
+  <!-- Center Knot -->
+  <circle cx="256" cy="165" r="22" fill="#F59E0B" />
+</svg>
