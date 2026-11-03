@@ -112,6 +112,8 @@ unwrapped/
 └── tests/
     ├── 01…08-*.test.ts              # 47-test end-to-end & security verification suite, split by section
     └── helpers/fixtures.ts          # Shared test setup
+└── e2e/
+    └── smoke.spec.ts                # Playwright browser smoke test (login + 2FA, list, item, autofill wiring)
 ```
 
 ---
@@ -119,6 +121,7 @@ unwrapped/
 ## 4. Common Developer & LLM Commands
 
 - **Run full test suite (47 tests)**: `npm test`
+- **Run browser smoke tests (Playwright, needs `npx playwright install chromium` once)**: `npm run test:e2e`
 - **Run TypeScript typecheck**: `npm run build`
 - **Start local development server**: `npm run dev` (listens on `http://localhost:3000`)
 - **Build production Docker image**: `docker build --target prod -t ghcr.io/jray222/unwrapped:latest .`

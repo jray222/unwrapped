@@ -9,5 +9,6 @@ export default defineConfig({
   test: {
     testTimeout: 60_000,
     hookTimeout: 120_000,
+    include: ['tests/**/*.test.ts'], // e2e/ belongs to Playwright (npm run test:e2e)
   },
 });
